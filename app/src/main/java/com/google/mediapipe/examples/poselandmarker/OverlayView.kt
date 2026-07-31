@@ -27,22 +27,19 @@ import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import kotlin.math.max
 import kotlin.math.min
+import android.graphics.BitmapFactory
+import com.google.mediapipe.examples.poselandmarker.R
 
 class OverlayView(context: Context?, attrs: AttributeSet?) :
     View(context, attrs) {
-var isPosePerfect = false
-var repCount = 0
     private var results: PoseLandmarkerResult? = null
     private var pointPaint = Paint()
     private var linePaint = Paint()
-    // ADD THIS NEW BLOCK RIGHT HERE:
-    private var targetPaint = Paint().apply {
-        color = android.graphics.Color.WHITE
-        strokeWidth = 15f
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-    }
-
+private var poseBitmap = try {
+    BitmapFactory.decodeResource(context?.resources, R.drawable.pose_template)
+} catch (e: Exception) {
+    null
+}
     private var scaleFactor: Float = 1f
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
@@ -70,54 +67,26 @@ var repCount = 0
         pointPaint.style = Paint.Style.FILL
     }
 
-    override fun draw(canvas: Canvas) {
-        super.draw(canvas)
-        // 1. Setup the big text for the Rep Counter
-     val textPaint = Paint().apply {
-         color = android.graphics.Color.YELLOW
-         textSize = 150f // HUGE text
-         isAntiAlias = true
-         style = Paint.Style.FILL
-     }
-     canvas.drawText("REPS: $repCount", 100f, 200f, textPaint)
+   override fun draw(canvas: Canvas) {
+    super.draw(canvas)
 
-     // 2. Change the target color dynamically!
-     if (isPosePerfect) {
-         targetPaint.color = android.graphics.Color.GREEN // Success Color!
-     } else {
-         targetPaint.color = android.graphics.Color.WHITE // Default Color
-     }
+    // Draw the transparent Huawei-style pose silhouette
+    poseBitmap?.let { bitmap ->
+        // Scale the silhouette to fit across the screen
+        val scale = canvas.width.toFloat() / bitmap.width.toFloat()
+        val scaledWidth = bitmap.width * scale
+        val scaledHeight = bitmap.height * scale
 
-     // 3. Draw the target shape (Using the dynamically colored paintbrush)
-     val centerX = canvas.width / 2f
-     val centerY = canvas.height / 2f
-     val elbowY = centerY + 300f
-     val wristX = centerX - 300f
-     canvas.drawLine(centerX, centerY, centerX, elbowY, targetPaint)
-     canvas.drawLine(centerX, elbowY, wristX, elbowY, targetPaint)
+        // Center it on the screen
+        val left = 0f
+        val top = (canvas.height - scaledHeight) / 2f
 
-        results?.let { poseLandmarkerResult ->
-            for(landmark in poseLandmarkerResult.landmarks()) {
-                for(normalizedLandmark in landmark) {
-                    
-                   /* canvas.drawPoint(
-                        normalizedLandmark.x() * imageWidth * scaleFactor,
-                        normalizedLandmark.y() * imageHeight * scaleFactor,
-                        pointPaint
-                    )*/
-                }
-
-                PoseLandmarker.POSE_LANDMARKS.forEach {
-                    /*canvas.drawLine(
-                        poseLandmarkerResult.landmarks().get(0).get(it!!.start()).x() * imageWidth * scaleFactor,
-                        poseLandmarkerResult.landmarks().get(0).get(it.start()).y() * imageHeight * scaleFactor,
-                        poseLandmarkerResult.landmarks().get(0).get(it.end()).x() * imageWidth * scaleFactor,
-                        poseLandmarkerResult.landmarks().get(0).get(it.end()).y() * imageHeight * scaleFactor,
-                        linePaint)*/
-                }
-            }
-        }
+        val rect = android.graphics.RectF(left, top, left + scaledWidth, top + scaledHeight)
+        canvas.drawBitmap(bitmap, null, rect, null)
     }
+
+    // (We intentionally leave out the Google tracking lines so the skeleton stays hidden!)
+}
 
     fun setResults(
         poseLandmarkerResults: PoseLandmarkerResult,
