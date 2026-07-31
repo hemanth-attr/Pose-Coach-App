@@ -406,14 +406,28 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         }
 
         // LOGIC CHECK: Is the arm bent at a perfect 90 degrees?
-        if (finalAngle > 80 && finalAngle < 100) {
-            activity?.runOnUiThread {
-                Toast.makeText(requireContext(), "PERFECT POSE! 90 Degrees!", Toast.LENGTH_SHORT).show()
-            }
-            // Here you can trigger a sound, change the UI color to green, etc.
-        } else {
-            println("Adjust your arm.")
-        }
+        // LOGIC CHECK: Is the arm bent at a perfect 90 degrees?
+     val currentPoseCorrect = (finalAngle > 80 && finalAngle < 100)
+
+     // Update the screen instantly
+     activity?.runOnUiThread {
+         // We use 'fragmentCameraBinding.overlay' because that's what 
+         // the Google sample calls your OverlayView file
+         val overlay = fragmentCameraBinding?.overlay
+
+         if (overlay != null) {
+             // If they JUST hit the pose, add 1 to the score
+             if (currentPoseCorrect && !overlay.isPosePerfect) {
+                 overlay.repCount += 1
+             }
+
+             // Update the color state
+             overlay.isPosePerfect = currentPoseCorrect
+
+             // Force the screen to redraw right now with the new colors/score
+             overlay.invalidate() 
+         }
+     }
     }
         activity?.runOnUiThread {
             if (_fragmentCameraBinding != null) {

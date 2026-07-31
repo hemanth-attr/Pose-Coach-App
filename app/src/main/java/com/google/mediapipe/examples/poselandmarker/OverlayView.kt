@@ -30,7 +30,8 @@ import kotlin.math.min
 
 class OverlayView(context: Context?, attrs: AttributeSet?) :
     View(context, attrs) {
-
+var isPosePerfect = false
+var repCount = 0
     private var results: PoseLandmarkerResult? = null
     private var pointPaint = Paint()
     private var linePaint = Paint()
@@ -64,9 +65,34 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
+        // 1. Setup the big text for the Rep Counter
+     val textPaint = Paint().apply {
+         color = android.graphics.Color.YELLOW
+         textSize = 150f // HUGE text
+         isAntiAlias = true
+         style = Paint.Style.FILL
+     }
+     canvas.drawText("REPS: $repCount", 100f, 200f, textPaint)
+
+     // 2. Change the target color dynamically!
+     if (isPosePerfect) {
+         targetPaint.color = android.graphics.Color.GREEN // Success Color!
+     } else {
+         targetPaint.color = android.graphics.Color.WHITE // Default Color
+     }
+
+     // 3. Draw the target shape (Using the dynamically colored paintbrush)
+     val centerX = canvas.width / 2f
+     val centerY = canvas.height / 2f
+     val elbowY = centerY + 300f
+     val wristX = centerX - 300f
+     canvas.drawLine(centerX, centerY, centerX, elbowY, targetPaint)
+     canvas.drawLine(centerX, elbowY, wristX, elbowY, targetPaint)
+     
         results?.let { poseLandmarkerResult ->
             for(landmark in poseLandmarkerResult.landmarks()) {
                 for(normalizedLandmark in landmark) {
+                    
                    /* canvas.drawPoint(
                         normalizedLandmark.x() * imageWidth * scaleFactor,
                         normalizedLandmark.y() * imageHeight * scaleFactor,
