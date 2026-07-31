@@ -44,6 +44,7 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import android.widget.Toast
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
@@ -406,7 +407,9 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         // LOGIC CHECK: Is the arm bent at a perfect 90 degrees?
         if (finalAngle > 80 && finalAngle < 100) {
-            println("PERFECT POSE!")
+            activity?.runOnUiThread {
+                Toast.makeText(requireContext(), "PERFECT POSE! 90 Degrees!", Toast.LENGTH_SHORT).show()
+            }
             // Here you can trigger a sound, change the UI color to green, etc.
         } else {
             println("Adjust your arm.")
