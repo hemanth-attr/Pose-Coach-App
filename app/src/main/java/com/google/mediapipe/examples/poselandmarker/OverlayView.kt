@@ -35,11 +35,16 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     private var results: PoseLandmarkerResult? = null
     private var pointPaint = Paint()
     private var linePaint = Paint()
-private var poseBitmap = try {
-    BitmapFactory.decodeResource(context?.resources, R.drawable.pose_template)
-} catch (e: Exception) {
-    null
-}
+var targetPose: List<android.graphics.PointF>? = null
+    var isPoseMatched = false
+
+    private var targetPaint = Paint().apply {
+        color = android.graphics.Color.WHITE
+        strokeWidth = 12f
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        alpha = 200 // Semi-transparent like Huawei
+    }
     private var scaleFactor: Float = 1f
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
@@ -68,25 +73,41 @@ private var poseBitmap = try {
     }
 
    override fun draw(canvas: Canvas) {
-    super.draw(canvas)
+        super.draw(canvas)
 
-    // Draw the transparent Huawei-style pose silhouette
-    poseBitmap?.let { bitmap ->
-        // Scale the silhouette to fit across the screen
-        val scale = canvas.width.toFloat() / bitmap.width.toFloat()
-        val scaledWidth = bitmap.width * scale
-        val scaledHeight = bitmap.height * scale
+        // Change color to green if they match it!
+        targetPaint.color = if (isPoseMatched) android.graphics.Color.GREEN else android.graphics.Color.WHITE
+        targetPaint.alpha = 200
 
-        // Center it on the screen
-        val left = 0f
-        val top = (canvas.height - scaledHeight) / 2f
+        targetPose?.let { pose ->
+            val centerX = canvas.width / 2f
+            val centerY = canvas.height / 2f
+            val drawScale = canvas.height / 4f // Scales the normalized coordinates to fit the screen
 
-        val rect = android.graphics.RectF(left, top, left + scaledWidth, top + scaledHeight)
-        canvas.drawBitmap(bitmap, null, rect, null)
+            // These are the MediaPipe joint pairs (Shoulder to Elbow, Hip to Knee, etc.)
+            val connections = listOf(
+                Pair(11, 12), Pair(11, 13), Pair(13, 15), Pair(12, 14), Pair(14, 16), // Arms
+                Pair(11, 23), Pair(12, 24), Pair(23, 24), // Torso
+                Pair(23, 25), Pair(25, 27), Pair(27, 29), Pair(29, 31), Pair(31, 27), // Left Leg
+                Pair(24, 26), Pair(26, 28), Pair(28, 30), Pair(30, 32), Pair(32, 28)  // Right Leg
+            )
+
+            // Draw the glowing silhouette lines
+            for (connection in connections) {
+                val startIdx = connection.first
+                val endIdx = connection.second
+                
+                if (startIdx < pose.size && endIdx < pose.size) {
+                    val startX = centerX + (pose[startIdx].x * drawScale)
+                    val startY = centerY + (pose[startIdx].y * drawScale)
+                    val endX = centerX + (pose[endIdx].x * drawScale)
+                    val endY = centerY + (pose[endIdx].y * drawScale)
+                    
+                    canvas.drawLine(startX, startY, endX, endY, targetPaint)
+                }
+            }
+        }
     }
-
-    // (We intentionally leave out the Google tracking lines so the skeleton stays hidden!)
-}
 
     fun setResults(
         poseLandmarkerResults: PoseLandmarkerResult,

@@ -377,37 +377,93 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     // Update UI after pose have been detected. Extracts original
     // image height/width to scale and place the landmarks properly through
     // OverlayView
-    override fun onResults(
-    resultBundle: PoseLandmarkerHelper.ResultBundle
-) {
-   
+override fun onResults(
+        resultBundle: PoseLandmarkerHelper.ResultBundle
+    ) {
+        val results = resultBundle.results
+        
         activity?.runOnUiThread {
-            if (_fragmentCameraBinding != null) {
-                fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
-                    String.format("%d ms", resultBundle.inferenceTime)
-
-                // Pass necessary information to OverlayView for drawing on the canvas
-                fragmentCameraBinding.overlay.setResults(
-                    resultBundle.results.first(),
-                    resultBundle.inputImageHeight,
-                    resultBundle.inputImageWidth,
-                    RunningMode.LIVE_STREAM
-                )
-
-                // Force a redraw
-                fragmentCameraBinding.overlay.invalidate()
+            val overlay = fragmentCameraBinding?.overlay
+            if (overlay != null) {
+                // Pass the target pose to the screen so it draws it
+                overlay.targetPose = dummyTargetPose
+                
+                if (results.isNotEmpty() && results.first().landmarks().isNotEmpty()) {
+                    val liveLandmarks = results.first().landmarks()[0]
+                    
+                    // Normalize the live camera body!
+                    val normalizedLive = normalizeLandmarks(liveLandmarks)
+                    
+                    // Compare Live Body vs Target Body (Only checking major joints for this prototype)
+                    var totalError = 0.0
+                    val jointsToCheck = listOf(11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
+                    
+                    for (i in jointsToCheck) {
+                        val distance = Math.sqrt(
+                            Math.pow((dummyTargetPose[i].x - normalizedLive[i].x).toDouble(), 2.0) + 
+                            Math.pow((dummyTargetPose[i].y - normalizedLive[i].y).toDouble(), 2.0)
+                        )
+                        totalError += distance
+                    }
+                    
+                    val averageError = totalError / jointsToCheck.size
+                    
+                    // If error is low, the pose matches perfectly regardless of distance!
+                    overlay.isPoseMatched = (averageError < 0.7) 
+                } else {
+                    overlay.isPoseMatched = false
+                }
+                overlay.invalidate()
             }
         }
     }
 
-    override fun onError(error: String, errorCode: Int) {
-        activity?.runOnUiThread {
-            Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
-            if (errorCode == PoseLandmarkerHelper.GPU_ERROR) {
-                fragmentCameraBinding.bottomSheetLayout.spinnerDelegate.setSelection(
-                    PoseLandmarkerHelper.DELEGATE_CPU, false
-                )
-            }
-        }
-    }
+// Dummy function representing your database connection
+private fun getPoseFromDatabase(): List<DummyCoordinate>? {
+    // In your final project, this will parse a JSON file containing 1000+ poses
+    return null 
 }
+// ---------------------------------------------------------
+    // AI MATH ENGINE
+    // ---------------------------------------------------------
+    
+    // A pre-calculated normalized "T-Pose" for testing
+    private val dummyTargetPose: List<android.graphics.PointF> = MutableList(33) { android.graphics.PointF(0f, 0f) }.apply {
+        // Torso
+        this[11] = android.graphics.PointF(-0.5f, -1.0f) // Left Shoulder
+        this[12] = android.graphics.PointF(0.5f, -1.0f)  // Right Shoulder
+        this[23] = android.graphics.PointF(-0.3f, 0.0f)  // Left Hip
+        this[24] = android.graphics.PointF(0.3f, 0.0f)   // Right Hip
+        // Arms (Straight out to the sides for T-Pose)
+        this[13] = android.graphics.PointF(-1.5f, -1.0f) // Left Elbow
+        this[15] = android.graphics.PointF(-2.5f, -1.0f) // Left Wrist
+        this[14] = android.graphics.PointF(1.5f, -1.0f)  // Right Elbow
+        this[16] = android.graphics.PointF(2.5f, -1.0f)  // Right Wrist
+        // Legs
+        this[25] = android.graphics.PointF(-0.3f, 1.0f)  // Left Knee
+        this[27] = android.graphics.PointF(-0.3f, 2.0f)  // Left Ankle
+        this[26] = android.graphics.PointF(0.3f, 1.0f)   // Right Knee
+        this[28] = android.graphics.PointF(0.3f, 2.0f)   // Right Ankle
+    }
+
+    private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {
+        val hipCenterX = (landmarks[23].x() + landmarks[24].x()) / 2f
+        val hipCenterY = (landmarks[23].y() + landmarks[24].y()) / 2f
+        val shoulderCenterX = (landmarks[11].x() + landmarks[12].x()) / 2f
+        val shoulderCenterY = (landmarks[11].y() + landmarks[12].y()) / 2f
+
+        val torsoScale = Math.sqrt(
+            Math.pow((shoulderCenterX - hipCenterX).toDouble(), 2.0) +
+            Math.pow((shoulderCenterY - hipCenterY).toDouble(), 2.0)
+        ).toFloat()
+
+        val safeScale = if (torsoScale < 0.001f) 1f else torsoScale
+
+        return landmarks.map { lm ->
+            android.graphics.PointF(
+                (lm.x() - hipCenterX) / safeScale,
+                (lm.y() - hipCenterY) / safeScale
+            )
+        }
+    }
+class DummyCoordinate(val x: Float, val y: Float)
