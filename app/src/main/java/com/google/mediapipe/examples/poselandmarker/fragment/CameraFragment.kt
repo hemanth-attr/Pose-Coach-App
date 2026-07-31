@@ -377,8 +377,41 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     // image height/width to scale and place the landmarks properly through
     // OverlayView
     override fun onResults(
-        resultBundle: PoseLandmarkerHelper.ResultBundle
-    ) {
+    resultBundle: PoseLandmarkerHelper.ResultBundle
+) {
+    val results = resultBundle.results
+    
+    // Check if the AI actually sees a person
+    if (results.isNotEmpty() && results.first().landmarks().isNotEmpty()) {
+        
+        // Grab the list of all 33 body points
+        val landmarks = results.first().landmarks()[0]
+
+        // Map the joints
+        val leftShoulder = landmarks[11]
+        val leftElbow = landmarks[13]
+        val leftWrist = landmarks[15]
+
+        // Calculate the angle using atan2 (Notice this is now INSIDE the if block)
+        val angle = Math.toDegrees(
+            Math.atan2((leftWrist.y() - leftElbow.y()).toDouble(), (leftWrist.x() - leftElbow.x()).toDouble()) -
+            Math.atan2((leftShoulder.y() - leftElbow.y()).toDouble(), (leftShoulder.x() - leftElbow.x()).toDouble())
+        )
+
+        // Ensure the angle is a positive number between 0 and 180 degrees
+        var finalAngle = Math.abs(angle)
+        if (finalAngle > 180) {
+            finalAngle = 360.0 - finalAngle
+        }
+
+        // LOGIC CHECK: Is the arm bent at a perfect 90 degrees?
+        if (finalAngle > 80 && finalAngle < 100) {
+            println("PERFECT POSE!")
+            // Here you can trigger a sound, change the UI color to green, etc.
+        } else {
+            println("Adjust your arm.")
+        }
+    }
         activity?.runOnUiThread {
             if (_fragmentCameraBinding != null) {
                 fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
