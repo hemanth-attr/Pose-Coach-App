@@ -383,7 +383,7 @@ override fun onResults(
         val results = resultBundle.results
         
         activity?.runOnUiThread {
-            val overlay = fragmentCameraBinding?.overlay
+            val overlay = _fragmentCameraBinding?.overlay
             if (overlay != null) {
                 // Pass the target pose to the screen so it draws it
                 overlay.targetPose = dummyTargetPose
@@ -394,7 +394,7 @@ override fun onResults(
                     // Normalize the live camera body!
                     val normalizedLive = normalizeLandmarks(liveLandmarks)
                     
-                    // Compare Live Body vs Target Body (Only checking major joints for this prototype)
+                    // Compare Live Body vs Target Body
                     var totalError = 0.0
                     val jointsToCheck = listOf(11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
                     
@@ -418,12 +418,14 @@ override fun onResults(
         }
     }
 
-// Dummy function representing your database connection
-private fun getPoseFromDatabase(): List<DummyCoordinate>? {
-    // In your final project, this will parse a JSON file containing 1000+ poses
-    return null 
-}
-// ---------------------------------------------------------
+    // REQUIRED BY LandmarkerListener: Handle errors from MediaPipe
+    override fun onError(error: String, errorCode: Int) {
+        activity?.runOnUiThread {
+            Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ---------------------------------------------------------
     // AI MATH ENGINE
     // ---------------------------------------------------------
     
@@ -466,4 +468,4 @@ private fun getPoseFromDatabase(): List<DummyCoordinate>? {
             )
         }
     }
-class DummyCoordinate(val x: Float, val y: Float)
+} // <-- THIS BRACKET CLOSES THE ENTIRE CameraFragment CLASS
