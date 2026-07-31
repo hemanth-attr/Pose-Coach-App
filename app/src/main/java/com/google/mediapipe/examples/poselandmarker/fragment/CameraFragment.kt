@@ -380,55 +380,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     override fun onResults(
     resultBundle: PoseLandmarkerHelper.ResultBundle
 ) {
-    val results = resultBundle.results
-    
-    // Check if the AI actually sees a person
-    if (results.isNotEmpty() && results.first().landmarks().isNotEmpty()) {
-        
-        // Grab the list of all 33 body points
-        val landmarks = results.first().landmarks()[0]
-
-        // Map the joints
-        val leftShoulder = landmarks[11]
-        val leftElbow = landmarks[13]
-        val leftWrist = landmarks[15]
-
-        // Calculate the angle using atan2 (Notice this is now INSIDE the if block)
-        val angle = Math.toDegrees(
-            Math.atan2((leftWrist.y() - leftElbow.y()).toDouble(), (leftWrist.x() - leftElbow.x()).toDouble()) -
-            Math.atan2((leftShoulder.y() - leftElbow.y()).toDouble(), (leftShoulder.x() - leftElbow.x()).toDouble())
-        )
-
-        // Ensure the angle is a positive number between 0 and 180 degrees
-        var finalAngle = Math.abs(angle)
-        if (finalAngle > 180) {
-            finalAngle = 360.0 - finalAngle
-        }
-
-        // LOGIC CHECK: Is the arm bent at a perfect 90 degrees?
-        // LOGIC CHECK: Is the arm bent at a perfect 90 degrees?
-     val currentPoseCorrect = (finalAngle > 80 && finalAngle < 100)
-
-     // Update the screen instantly
-     activity?.runOnUiThread {
-         // We use 'fragmentCameraBinding.overlay' because that's what 
-         // the Google sample calls your OverlayView file
-         val overlay = fragmentCameraBinding?.overlay
-
-         if (overlay != null) {
-             // If they JUST hit the pose, add 1 to the score
-             if (currentPoseCorrect && !overlay.isPosePerfect) {
-                 overlay.repCount += 1
-             }
-
-             // Update the color state
-             overlay.isPosePerfect = currentPoseCorrect
-
-             // Force the screen to redraw right now with the new colors/score
-             overlay.invalidate() 
-         }
-     }
-    }
+   
         activity?.runOnUiThread {
             if (_fragmentCameraBinding != null) {
                 fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
