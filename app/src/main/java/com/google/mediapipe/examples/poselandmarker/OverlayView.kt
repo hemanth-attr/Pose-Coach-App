@@ -35,6 +35,13 @@ var repCount = 0
     private var results: PoseLandmarkerResult? = null
     private var pointPaint = Paint()
     private var linePaint = Paint()
+    // ADD THIS NEW BLOCK RIGHT HERE:
+    private var targetPaint = Paint().apply {
+        color = android.graphics.Color.WHITE
+        strokeWidth = 15f
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
 
     private var scaleFactor: Float = 1f
     private var imageWidth: Int = 1
@@ -88,7 +95,7 @@ var repCount = 0
      val wristX = centerX - 300f
      canvas.drawLine(centerX, centerY, centerX, elbowY, targetPaint)
      canvas.drawLine(centerX, elbowY, wristX, elbowY, targetPaint)
-     
+
         results?.let { poseLandmarkerResult ->
             for(landmark in poseLandmarkerResult.landmarks()) {
                 for(normalizedLandmark in landmark) {
