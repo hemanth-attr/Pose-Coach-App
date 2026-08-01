@@ -502,7 +502,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
                         
                     } else {
                         overlay.isPoseMatched = false
-                        //overlay.clearLivePose()
+                        overlay.clearLivePose()
                     }
                 } catch (e: Exception) {
                     // CATCH-ALL CRASH FIX: If the math fails, just mark the pose as false instead of closing the app!
@@ -556,12 +556,12 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
                 try {
                     val masks = resultBundle.result.confidenceMasks().get()
                     if (masks.isNotEmpty()) {
+                        // Grab the actual human mask securely
                         val mask = masks.last()
                         val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
                         val maskFloatBuffer = byteBuffer.asFloatBuffer()
                         
-                        // CRITICAL FIX: We MUST use mask.width and mask.height! 
-                        // Using inputImageWidth caused a hidden background crash.
+                        // CRITICAL FIX: Pass the precise width/height of the mask itself!
                         overlay.setSegmentationMask(
                             maskFloatBuffer, 
                             mask.width, 
@@ -569,7 +569,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
                         )
                     }
                 } catch (e: Exception) {
-                    // Ignore mask rendering errors
+                    // Ignore mask rendering errors so it doesn't crash
                 }
             }
         }

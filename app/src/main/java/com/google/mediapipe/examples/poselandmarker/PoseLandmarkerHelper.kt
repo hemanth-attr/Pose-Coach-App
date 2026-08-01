@@ -149,52 +149,55 @@ class PoseLandmarkerHelper(
         }
     }
 
-    // Convert the ImageProxy to MP Image and feed it to PoselandmakerHelper.
+   // Convert the ImageProxy to MP Image and feed it to PoselandmakerHelper.
     fun detectLiveStream(
         imageProxy: ImageProxy,
         isFrontCamera: Boolean
     ) {
         if (runningMode != RunningMode.LIVE_STREAM) {
-            throw IllegalArgumentException(
-                "Attempting to call detectLiveStream" +
-                        " while not using RunningMode.LIVE_STREAM"
-            )
+            throw IllegalArgumentException("Attempting to call detectLiveStream while not using RunningMode.LIVE_STREAM")
         }
         val frameTime = SystemClock.uptimeMillis()
 
-        // Copy out RGB bits from the frame to a bitmap buffer
-        val bitmapBuffer =
-            Bitmap.createBitmap(
-                imageProxy.width,
-                imageProxy.height,
-                Bitmap.Config.ARGB_8888
-            )
+        val plane = imageProxy.planes[0]
+        val buffer = plane.buffer
+        val width = imageProxy.width
+        val height = imageProxy.height
+        val rowStride = plane.rowStride
+        val pixelStride = plane.pixelStride
 
-        imageProxy.use { bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer) }
+        // Strip the padding from the camera frame
+        val paddedWidth = rowStride / pixelStride
+        val safeBitmap = if (paddedWidth == width) {
+            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            buffer.rewind()
+            bmp.copyPixelsFromBuffer(buffer)
+            bmp
+        } else {
+            val paddedBmp = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888)
+            buffer.rewind()
+            paddedBmp.copyPixelsFromBuffer(buffer)
+            Bitmap.createBitmap(paddedBmp, 0, 0, width, height)
+        }
+
+        // Must close the image here so the camera can capture the next frame!
         imageProxy.close()
 
         val matrix = Matrix().apply {
-            // Rotate the frame received from the camera to be in the same direction as it'll be shown
             postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-
-            // flip image if user use front camera
-            if (isFrontCamera) {
-                postScale(
-                    -1f,
-                    1f,
-                    imageProxy.width.toFloat(),
-                    imageProxy.height.toFloat()
-                )
-            }
         }
-        val rotatedBitmap = Bitmap.createBitmap(
-            bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height,
-            matrix, true
-        )
+        val rotatedBitmap = Bitmap.createBitmap(safeBitmap, 0, 0, width, height, matrix, false)
 
-        // Convert the input Bitmap object to an MPImage object to run inference
-        val mpImage = BitmapImageBuilder(rotatedBitmap).build()
+        val finalBitmap = if (isFrontCamera) {
+            val flipMatrix = Matrix().apply { 
+                postScale(-1f, 1f, rotatedBitmap.width / 2f, rotatedBitmap.height / 2f) 
+            }
+            Bitmap.createBitmap(rotatedBitmap, 0, 0, rotatedBitmap.width, rotatedBitmap.height, flipMatrix, false)
+        } else {
+            rotatedBitmap
+        }
 
+        val mpImage = BitmapImageBuilder(finalBitmap).build()
         detectAsync(mpImage, frameTime)
     }
 

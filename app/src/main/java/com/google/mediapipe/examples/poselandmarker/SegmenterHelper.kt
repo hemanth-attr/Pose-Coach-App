@@ -18,10 +18,6 @@ class SegmenterHelper(
     val segmenterListener: SegmenterListener?
 ) {
     private var imageSegmenter: ImageSegmenter? = null
-    
-    // MEMORY FIX: Recycle these instead of creating them 30 times a second!
-    private var bitmapBuffer: Bitmap? = null
-    private var rotatedBitmap: Bitmap? = null
 
     init {
         setupSegmenter()
@@ -40,7 +36,7 @@ class SegmenterHelper(
             val optionsBuilder = ImageSegmenter.ImageSegmenterOptions.builder()
                 .setBaseOptions(baseOptionsBuilder.build())
                 .setRunningMode(RunningMode.LIVE_STREAM)
-                .setOutputConfidenceMasks(true) // CRUCIAL FIX: Tell AI to output the mask!
+                .setOutputConfidenceMasks(true)
                 .setOutputCategoryMask(false)
                 .setResultListener(this::returnSegmentationResult)
                 .setErrorListener(this::returnSegmentationError)
@@ -52,60 +48,67 @@ class SegmenterHelper(
     }
 
     fun segmentLiveStreamFrame(imageProxy: ImageProxy, isFrontCamera: Boolean) {
-        if (imageSegmenter == null) {
-            imageProxy.close()
-            return
-        }
+        if (imageSegmenter == null) return
 
         try {
             val frameTime = SystemClock.uptimeMillis()
-            
-            // Only create the bitmap once!
-            if (bitmapBuffer == null || bitmapBuffer!!.width != imageProxy.width || bitmapBuffer!!.height != imageProxy.height) {
-                bitmapBuffer = Bitmap.createBitmap(imageProxy.width, imageProxy.height, Bitmap.Config.ARGB_8888)
+
+            val plane = imageProxy.planes[0]
+            val buffer = plane.buffer
+            val width = imageProxy.width
+            val height = imageProxy.height
+            val rowStride = plane.rowStride
+            val pixelStride = plane.pixelStride
+
+            // FIX 1: The "Row Stride" Padding Fix to prevent diagonal glitches
+            val paddedWidth = rowStride / pixelStride
+            val safeBitmap = if (paddedWidth == width) {
+                val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                buffer.rewind()
+                bmp.copyPixelsFromBuffer(buffer)
+                buffer.rewind() // Crucial: Rewind so PoseLandmarker can read it next!
+                bmp
+            } else {
+                val paddedBmp = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888)
+                buffer.rewind()
+                paddedBmp.copyPixelsFromBuffer(buffer)
+                buffer.rewind() // Crucial: Rewind so PoseLandmarker can read it next!
+                Bitmap.createBitmap(paddedBmp, 0, 0, width, height) // Crop out the hidden padding!
             }
 
-            imageProxy.planes[0].buffer.rewind()
-            bitmapBuffer!!.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
-
-            val matrix = Matrix().apply {
+            // FIX 2: Correct rotation math
+            val rotationMatrix = Matrix().apply {
                 postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                if (isFrontCamera) {
-                    postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+            }
+            val rotatedBitmap = Bitmap.createBitmap(safeBitmap, 0, 0, width, height, rotationMatrix, false)
+
+            // FIX 3: Prevent the mask from being shifted off-screen during front-camera mirroring
+            val finalBitmap = if (isFrontCamera) {
+                val flipMatrix = Matrix().apply { 
+                    postScale(-1f, 1f, rotatedBitmap.width / 2f, rotatedBitmap.height / 2f) 
                 }
+                Bitmap.createBitmap(rotatedBitmap, 0, 0, rotatedBitmap.width, rotatedBitmap.height, flipMatrix, false)
+            } else {
+                rotatedBitmap
             }
             
-            rotatedBitmap = Bitmap.createBitmap(
-                bitmapBuffer!!, 0, 0, bitmapBuffer!!.width, bitmapBuffer!!.height, matrix, true
-            )
-            
-            val mpImage = BitmapImageBuilder(rotatedBitmap!!).build()
+            val mpImage = BitmapImageBuilder(finalBitmap).build()
             imageSegmenter?.segmentAsync(mpImage, frameTime)
             
         } catch (e: Exception) {
             Log.e("SegmenterHelper", "Frame skipped due to buffer issue")
-        } finally {
-            // CRUCIAL FIX: Safely close the image so the camera can capture the next one!
-            imageProxy.close()
         }
     }
 
     private fun returnSegmentationResult(result: ImageSegmenterResult, image: MPImage) {
-        segmenterListener?.onSegmentationResults(
-            ResultBundle(result, image.width, image.height)
-        )
+        segmenterListener?.onSegmentationResults(ResultBundle(result, image.width, image.height))
     }
 
     private fun returnSegmentationError(error: RuntimeException) {
         segmenterListener?.onError(error.message ?: "An unknown error has occurred")
     }
 
-    data class ResultBundle(
-        val result: ImageSegmenterResult,
-        val inputImageWidth: Int,
-        val inputImageHeight: Int
-    )
-
+    data class ResultBundle(val result: ImageSegmenterResult, val inputImageWidth: Int, val inputImageHeight: Int)
     interface SegmenterListener {
         fun onError(error: String)
         fun onSegmentationResults(resultBundle: ResultBundle)
