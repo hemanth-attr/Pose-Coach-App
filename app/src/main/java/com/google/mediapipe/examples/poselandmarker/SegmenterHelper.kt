@@ -48,7 +48,7 @@ class SegmenterHelper(
         }
     }
 
-    fun segmentLiveStreamFrame(imageProxy: ImageProxy, isFrontCamera: Boolean) {
+   fun segmentLiveStreamFrame(imageProxy: ImageProxy, isFrontCamera: Boolean) {
         if (imageSegmenter == null) return
 
         val frameTime = SystemClock.uptimeMillis()
@@ -57,7 +57,16 @@ class SegmenterHelper(
             imageProxy.height,
             Bitmap.Config.ARGB_8888
         )
-        imageProxy.use { bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer) }
+
+        // --- THE CRASH FIX ---
+        // We carefully copy the pixels without destroying the original camera frame
+        try {
+            imageProxy.planes[0].buffer.rewind() // Ensure we start at the beginning
+            bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
+            imageProxy.planes[0].buffer.rewind() // Rewind it again so the Pose AI can read it next!
+        } catch (e: Exception) {
+            return // If the frame is corrupted, skip it instead of crashing
+        }
 
         val matrix = Matrix().apply {
             postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
@@ -72,10 +81,8 @@ class SegmenterHelper(
         
         val mpImage = BitmapImageBuilder(rotatedBitmap).build()
         
-        // Pass to the AI
         imageSegmenter?.segmentAsync(mpImage, frameTime)
     }
-
     private fun returnSegmentationResult(
         result: ImageSegmenterResult,
         image: MPImage

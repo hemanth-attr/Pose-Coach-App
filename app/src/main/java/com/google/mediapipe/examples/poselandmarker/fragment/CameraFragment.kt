@@ -382,11 +382,13 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
 
             val isFront = cameraFacing == CameraSelector.LENS_FACING_FRONT
 
+            
+            // AI 2: Pixel Segmentation
+            segmenterHelper.segmentLiveStreamFrame(imageProxy, isFrontCamera = isFront)
+
             // AI 1: Pose Math
             poseLandmarkerHelper.detectLiveStream(imageProxy, isFrontCamera = isFront)
 
-            // AI 2: Pixel Segmentation
-            segmenterHelper.segmentLiveStreamFrame(imageProxy, isFrontCamera = isFront)
 
         } else {
             imageProxy.close()

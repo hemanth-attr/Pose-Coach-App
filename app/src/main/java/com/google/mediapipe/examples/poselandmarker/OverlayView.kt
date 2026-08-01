@@ -38,6 +38,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     private var maskHeight: Int = 0
     private var maskBitmap: Bitmap? = null
 
+    // Add this near the top with your other variables
+    private var pixelArray: IntArray = IntArray(0)
     init {
         initPaints()
     }
@@ -72,30 +74,31 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        // ---------------------------------------------------------
-        // 1. DRAW LIVE CAMERA SEGMENTATION MASK (The Dual-AI Pro feature!)
-        // ---------------------------------------------------------
+        // 1. DRAW LIVE CAMERA SEGMENTATION MASK
         segmentationMask?.let { mask ->
-            val pixels = IntArray(maskWidth * maskHeight)
+            val totalPixels = maskWidth * maskHeight
+            
+            // MEMORY FIX: Only create a new array if the camera resolution changes
+            if (pixelArray.size != totalPixels) {
+                pixelArray = IntArray(totalPixels)
+            }
+            
             mask.rewind()
             
-            // Loop through every single pixel the camera sees
-            for (i in pixels.indices) {
+            for (i in 0 until totalPixels) {
                 val confidence = mask.get()
-                // If the AI is >50% sure this pixel is your body, color it in!
                 if (confidence > 0.5f) {
-                    pixels[i] = if (isPoseMatched) Color.argb(200, 0, 255, 0) else Color.argb(100, 255, 255, 255)
+                    pixelArray[i] = if (isPoseMatched) Color.argb(200, 0, 255, 0) else Color.argb(100, 255, 255, 255)
                 } else {
-                    pixels[i] = Color.TRANSPARENT // Background remains invisible
+                    pixelArray[i] = Color.TRANSPARENT
                 }
             }
 
             if (maskBitmap == null || maskBitmap!!.width != maskWidth || maskBitmap!!.height != maskHeight) {
                 maskBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888)
             }
-            maskBitmap!!.setPixels(pixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
+            maskBitmap!!.setPixels(pixelArray, 0, maskWidth, 0, 0, maskWidth, maskHeight)
 
-            // Stretch the AI mask to perfectly fit your phone screen
             val scaleX = width.toFloat() / maskWidth.toFloat()
             val scaleY = height.toFloat() / maskHeight.toFloat()
             val matrix = Matrix()
@@ -104,22 +107,19 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
             canvas.drawBitmap(maskBitmap!!, matrix, null)
         }
 
-        // ---------------------------------------------------------
         // 2. DRAW THE TARGET POSE (The vector silhouette from JSON)
-        // ---------------------------------------------------------
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
             val centerY = canvas.height / 2f
             val drawScale = canvas.height / 3.5f
 
-            fun getPoint(idx: Int): PointF {
-                return PointF(
+            fun getPoint(idx: Int): android.graphics.PointF {
+                return android.graphics.PointF(
                     centerX + (pose[idx].x * drawScale),
                     centerY + (pose[idx].y * drawScale)
                 )
             }
 
-            // We create a temporary layer for transparency so the body parts don't overlap visually!
             val alphaPaint = Paint().apply {
                 alpha = if (isPoseMatched) 255 else 160
             }
@@ -143,10 +143,10 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 val neckThickness = drawScale * 0.08f
 
                 val nose = getPoint(0)
-                val p11 = getPoint(11) // L Shoulder
-                val p12 = getPoint(12) // R Shoulder
-                val p23 = getPoint(23) // L Hip
-                val p24 = getPoint(24) // R Hip
+                val p11 = getPoint(11) 
+                val p12 = getPoint(12) 
+                val p23 = getPoint(23) 
+                val p24 = getPoint(24) 
 
                 val shoulderCenterX = (p11.x + p12.x) / 2f
                 val shoulderCenterY = (p11.y + p12.y) / 2f
@@ -187,9 +187,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
             canvas.restoreToCount(layerId)
         }
 
-        // ---------------------------------------------------------
-        // 3. ORIGINAL MEDIAPIPE DRAWING (For Gallery Fragment Fallback)
-        // ---------------------------------------------------------
+        // 3. ORIGINAL MEDIAPIPE DRAWING
         results?.let { poseLandmarkerResult ->
             if (segmentationMask == null) {
                 for (landmark in poseLandmarkerResult.landmarks()) {
