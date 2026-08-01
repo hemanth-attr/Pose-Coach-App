@@ -79,46 +79,41 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        // 1. DRAW LIVE CAMERA SEGMENTATION MASK
-        segmentationMask?.let { mask ->
-            try {
-                val totalPixels = maskWidth * maskHeight
-                
-                if (pixelArray.size != totalPixels) {
-                    pixelArray = IntArray(totalPixels)
-                }
-                
-                mask.rewind()
-                
-                for (i in 0 until totalPixels) {
-                    if (mask.hasRemaining()) {
-                        val confidence = mask.get()
-                        if (confidence > 0.5f) {
-                            pixelArray[i] = if (isPoseMatched) Color.argb(200, 0, 255, 0) else Color.argb(100, 255, 255, 255)
-                        } else {
-                            pixelArray[i] = Color.TRANSPARENT
-                        }
-                    } else {
-                        pixelArray[i] = Color.TRANSPARENT
-                    }
-                }
-
-                if (maskBitmap == null || maskBitmap!!.width != maskWidth || maskBitmap!!.height != maskHeight) {
-                    maskBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888)
-                }
-                maskBitmap!!.setPixels(pixelArray, 0, maskWidth, 0, 0, maskWidth, maskHeight)
-
-                val scaleX = width.toFloat() / maskWidth.toFloat()
-                val scaleY = height.toFloat() / maskHeight.toFloat()
-                val matrix = Matrix()
-                matrix.postScale(scaleX, scaleY)
-                
-                canvas.drawBitmap(maskBitmap!!, matrix, null)
-            } catch (e: Exception) {
-                // Silently fail if buffer underruns
-            }
+        // 1. CONFIGURE THE PREMIUM GLOWING STROKE (Huawei Style)
+        val premiumOutlinePaint = Paint().apply {
+            color = if (isPoseMatched) Color.GREEN else Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 10f // Thick, premium line
+            strokeJoin = Paint.Join.ROUND
+            strokeCap = Paint.Cap.ROUND
+            isAntiAlias = true
+            // Adds the beautiful glowing aura
+            setShadowLayer(15f, 0f, 0f, if (isPoseMatched) Color.GREEN else Color.WHITE) 
         }
 
+        // 2. DRAW THE DYNAMIC HUMAN OUTLINE
+        segmentationMask?.let { mask ->
+            try {
+                // Extract the simplified edge points using OpenCV
+                val boundaryPoints = ContourHelper.extractSmoothContour(
+                    maskBuffer = mask,
+                    maskWidth = maskWidth,
+                    maskHeight = maskHeight,
+                    viewWidth = width.toFloat(),
+                    viewHeight = height.toFloat()
+                )
+
+                // Turn those points into a flowing, organic Spline curve
+                val organicSilhouettePath = ContourHelper.createSplinePath(boundaryPoints, tension = 0.25f)
+
+                // Draw the final premium outline
+                canvas.drawPath(organicSilhouettePath, premiumOutlinePaint)
+
+            } catch (e: Exception) {
+                // Failsafe
+            }
+        }
+       
         // 2. DRAW THE TARGET POSE (The solid vector silhouette)
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f

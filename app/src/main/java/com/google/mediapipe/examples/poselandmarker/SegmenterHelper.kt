@@ -66,13 +66,11 @@ class SegmenterHelper(
                 val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 buffer.rewind()
                 bmp.copyPixelsFromBuffer(buffer)
-                buffer.rewind() // Crucial: Rewind so PoseLandmarker can read it next!
                 bmp
             } else {
                 val paddedBmp = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888)
                 buffer.rewind()
                 paddedBmp.copyPixelsFromBuffer(buffer)
-                buffer.rewind() // Crucial: Rewind so PoseLandmarker can read it next!
                 Bitmap.createBitmap(paddedBmp, 0, 0, width, height) // Crop out the hidden padding!
             }
 
@@ -97,6 +95,9 @@ class SegmenterHelper(
             
         } catch (e: Exception) {
             Log.e("SegmenterHelper", "Frame skipped due to buffer issue")
+        } finally {
+            // CRITICAL FIX: Always close the image proxy to keep the 60FPS pipeline flowing
+            imageProxy.close()
         }
     }
 

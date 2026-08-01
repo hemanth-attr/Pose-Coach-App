@@ -46,7 +46,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import com.google.mediapipe.examples.poselandmarker.SegmenterHelper
-
+import org.opencv.android.OpenCVLoader
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, SegmenterHelper.SegmenterListener {
     companion object {
@@ -131,6 +131,12 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // START OPENCV ENGINE
+     if (!OpenCVLoader.initDebug()) {
+         Log.e(TAG, "OpenCV initialization failed.")
+     } else {
+         Log.d(TAG, "OpenCV initialized successfully.")
+     }
         // Initialize our background executor
         backgroundExecutor = Executors.newSingleThreadExecutor()
 
