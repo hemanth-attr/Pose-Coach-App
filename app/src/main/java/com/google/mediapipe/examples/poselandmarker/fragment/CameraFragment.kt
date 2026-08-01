@@ -502,6 +502,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
                         
                     } else {
                         overlay.isPoseMatched = false
+                        //overlay.clearLivePose()
                     }
                 } catch (e: Exception) {
                     // CATCH-ALL CRASH FIX: If the math fails, just mark the pose as false instead of closing the app!
@@ -547,29 +548,28 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
         }
     }
 
-    // --- SEGMENTER LISTENER ---
-    // --- SEGMENTER LISTENER ---
+   // --- SEGMENTER LISTENER ---
     override fun onSegmentationResults(resultBundle: SegmenterHelper.ResultBundle) {
         activity?.runOnUiThread {
             val overlay = _fragmentCameraBinding?.overlay
             if (overlay != null) {
                 try {
-                    // CRASH FIX: Use .last() to always safely get the human mask
                     val masks = resultBundle.result.confidenceMasks().get()
                     if (masks.isNotEmpty()) {
-                        val mask = masks.last() 
-                        
+                        val mask = masks.last()
                         val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
                         val maskFloatBuffer = byteBuffer.asFloatBuffer()
                         
+                        // CRITICAL FIX: We MUST use mask.width and mask.height! 
+                        // Using inputImageWidth caused a hidden background crash.
                         overlay.setSegmentationMask(
                             maskFloatBuffer, 
-                            resultBundle.inputImageWidth, 
-                            resultBundle.inputImageHeight
+                            mask.width, 
+                            mask.height
                         )
                     }
                 } catch (e: Exception) {
-                    // Ignore mask rendering errors so the app stays alive
+                    // Ignore mask rendering errors
                 }
             }
         }

@@ -38,8 +38,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     private var maskHeight: Int = 0
     private var maskBitmap: Bitmap? = null
 
-    // Add this near the top with your other variables
     private var pixelArray: IntArray = IntArray(0)
+
     init {
         initPaints()
     }
@@ -53,6 +53,12 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         initPaints()
     }
 
+    // NEW: Clears only the live camera skeleton so it doesn't freeze!
+    fun clearLivePose() {
+        results = null
+        invalidate()
+    }
+
     private fun initPaints() {
         linePaint.color = ContextCompat.getColor(context!!, R.color.mp_color_primary)
         linePaint.strokeWidth = LANDMARK_STROKE_WIDTH
@@ -63,7 +69,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         pointPaint.style = Paint.Style.FILL
     }
 
-    // Receives the live pixel data from the Segmentation AI
     fun setSegmentationMask(mask: FloatBuffer, width: Int, height: Int) {
         segmentationMask = mask
         maskWidth = width
@@ -76,38 +81,45 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
 
         // 1. DRAW LIVE CAMERA SEGMENTATION MASK
         segmentationMask?.let { mask ->
-            val totalPixels = maskWidth * maskHeight
-            
-            // MEMORY FIX: Only create a new array if the camera resolution changes
-            if (pixelArray.size != totalPixels) {
-                pixelArray = IntArray(totalPixels)
-            }
-            
-            mask.rewind()
-            
-            for (i in 0 until totalPixels) {
-                val confidence = mask.get()
-                if (confidence > 0.5f) {
-                    pixelArray[i] = if (isPoseMatched) Color.argb(200, 0, 255, 0) else Color.argb(100, 255, 255, 255)
-                } else {
-                    pixelArray[i] = Color.TRANSPARENT
+            try {
+                val totalPixels = maskWidth * maskHeight
+                
+                if (pixelArray.size != totalPixels) {
+                    pixelArray = IntArray(totalPixels)
                 }
-            }
+                
+                mask.rewind()
+                
+                for (i in 0 until totalPixels) {
+                    if (mask.hasRemaining()) {
+                        val confidence = mask.get()
+                        if (confidence > 0.5f) {
+                            pixelArray[i] = if (isPoseMatched) Color.argb(200, 0, 255, 0) else Color.argb(100, 255, 255, 255)
+                        } else {
+                            pixelArray[i] = Color.TRANSPARENT
+                        }
+                    } else {
+                        pixelArray[i] = Color.TRANSPARENT
+                    }
+                }
 
-            if (maskBitmap == null || maskBitmap!!.width != maskWidth || maskBitmap!!.height != maskHeight) {
-                maskBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888)
-            }
-            maskBitmap!!.setPixels(pixelArray, 0, maskWidth, 0, 0, maskWidth, maskHeight)
+                if (maskBitmap == null || maskBitmap!!.width != maskWidth || maskBitmap!!.height != maskHeight) {
+                    maskBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888)
+                }
+                maskBitmap!!.setPixels(pixelArray, 0, maskWidth, 0, 0, maskWidth, maskHeight)
 
-            val scaleX = width.toFloat() / maskWidth.toFloat()
-            val scaleY = height.toFloat() / maskHeight.toFloat()
-            val matrix = Matrix()
-            matrix.postScale(scaleX, scaleY)
-            
-            canvas.drawBitmap(maskBitmap!!, matrix, null)
+                val scaleX = width.toFloat() / maskWidth.toFloat()
+                val scaleY = height.toFloat() / maskHeight.toFloat()
+                val matrix = Matrix()
+                matrix.postScale(scaleX, scaleY)
+                
+                canvas.drawBitmap(maskBitmap!!, matrix, null)
+            } catch (e: Exception) {
+                // Silently fail if buffer underruns
+            }
         }
 
-        // 2. DRAW THE TARGET POSE (The vector silhouette from JSON)
+        // 2. DRAW THE TARGET POSE (The solid vector silhouette)
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
             val centerY = canvas.height / 2f
@@ -213,7 +225,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         }
     }
 
-    // REQUIRED BY GalleryFragment
     fun setResults(
         poseLandmarkerResults: PoseLandmarkerResult,
         imageHeight: Int,
