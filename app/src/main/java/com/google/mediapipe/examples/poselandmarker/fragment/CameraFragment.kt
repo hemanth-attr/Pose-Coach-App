@@ -45,6 +45,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
+import com.google.mediapipe.examples.poselandmarker.SegmenterHelper
 
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, SegmenterHelper.SegmenterListener {
@@ -504,9 +505,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
             )
         }
     }
-} // <-- THIS BRACKET CLOSES THE ENTIRE CameraFragment CLASS
 
-// --- SEGMENTER LISTENER ---
+    // --- SEGMENTER LISTENER ---
     override fun onSegmentationResults(resultBundle: SegmenterHelper.ResultBundle) {
         activity?.runOnUiThread {
             val overlay = _fragmentCameraBinding?.overlay
@@ -523,3 +523,5 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
             }
         }
     }
+} // <-- THIS BRACKET CLOSES THE ENTIRE CameraFragment CLASS
+
