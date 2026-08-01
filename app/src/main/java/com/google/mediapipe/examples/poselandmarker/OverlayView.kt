@@ -72,70 +72,89 @@ var targetPose: List<android.graphics.PointF>? = null
         pointPaint.style = Paint.Style.FILL
     }
 
-   override fun draw(canvas: Canvas) {
+  override fun draw(canvas: Canvas) {
         super.draw(canvas)
-
-        // Change color to green if they match it!
-        targetPaint.color = if (isPoseMatched) android.graphics.Color.GREEN else android.graphics.Color.WHITE
-        targetPaint.alpha = 200
 
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
             val centerY = canvas.height / 2f
-            val drawScale = canvas.height / 4f // Scales the normalized coordinates to fit the screen
+            val drawScale = canvas.height / 3.5f // Scales the human to fit the screen nicely
 
-            // These are the MediaPipe joint pairs (Shoulder to Elbow, Hip to Knee, etc.)
-            val connections = listOf(
-                Pair(11, 12), Pair(11, 13), Pair(13, 15), Pair(12, 14), Pair(14, 16), // Arms
-                Pair(11, 23), Pair(12, 24), Pair(23, 24), // Torso
-                Pair(23, 25), Pair(25, 27), Pair(27, 29), Pair(29, 31), Pair(31, 27), // Left Leg
-                Pair(24, 26), Pair(26, 28), Pair(28, 30), Pair(30, 32), Pair(32, 28)  // Right Leg
-            )
+            // Helper function to get coordinates
+            fun getPoint(idx: Int): android.graphics.PointF {
+                return android.graphics.PointF(
+                    centerX + (pose[idx].x * drawScale),
+                    centerY + (pose[idx].y * drawScale)
+                )
+            }
 
-            // Draw the glowing silhouette lines
-            for (connection in connections) {
-                val startIdx = connection.first
-                val endIdx = connection.second
+            // 1. The Paint that makes it look like a solid human silhouette
+            val silhouettePaint = Paint().apply {
+                // Semi-transparent white (like Huawei), turns Green when matched
+                color = if (isPoseMatched) android.graphics.Color.GREEN else android.graphics.Color.argb(180, 255, 255, 255)
+                style = Paint.Style.FILL_AND_STROKE
+                strokeJoin = Paint.Join.ROUND
+                strokeCap = Paint.Cap.ROUND
+                isAntiAlias = true
+            }
+
+            // Ensure we have all 33 points loaded
+            if (pose.size >= 33) {
+                // Calculate dynamic body thicknesses based on screen size
+                val headRadius = drawScale * 0.18f
+                val torsoRoundness = drawScale * 0.1f
+                val bicepThickness = drawScale * 0.12f
+                val forearmThickness = drawScale * 0.09f
+                val thighThickness = drawScale * 0.16f
+                val calfThickness = drawScale * 0.12f
+
+                // 2. Draw the Head
+                val nose = getPoint(0)
+                silhouettePaint.strokeWidth = 5f 
+                canvas.drawCircle(nose.x, nose.y - (headRadius * 0.5f), headRadius, silhouettePaint)
+
+                // 3. Draw the Solid Torso
+                val p11 = getPoint(11) // L Shoulder
+                val p12 = getPoint(12) // R Shoulder
+                val p23 = getPoint(23) // L Hip
+                val p24 = getPoint(24) // R Hip
+
+                val torsoPath = android.graphics.Path()
+                torsoPath.moveTo(p11.x, p11.y)
+                torsoPath.lineTo(p12.x, p12.y)
+                torsoPath.lineTo(p24.x, p24.y)
+                torsoPath.lineTo(p23.x, p23.y)
+                torsoPath.close()
                 
-                if (startIdx < pose.size && endIdx < pose.size) {
-                    val startX = centerX + (pose[startIdx].x * drawScale)
-                    val startY = centerY + (pose[startIdx].y * drawScale)
-                    val endX = centerX + (pose[endIdx].x * drawScale)
-                    val endY = centerY + (pose[endIdx].y * drawScale)
-                    
-                    canvas.drawLine(startX, startY, endX, endY, targetPaint)
+                silhouettePaint.strokeWidth = torsoRoundness // Gives the torso soft shoulders/hips
+                canvas.drawPath(torsoPath, silhouettePaint)
+
+                // 4. Draw Thick "Human" Limbs
+                fun drawLimb(startIdx: Int, endIdx: Int, thickness: Float) {
+                    val start = getPoint(startIdx)
+                    val end = getPoint(endIdx)
+                    silhouettePaint.strokeWidth = thickness
+                    canvas.drawLine(start.x, start.y, end.x, end.y, silhouettePaint)
                 }
+
+                // Arms
+                drawLimb(11, 13, bicepThickness) // Left Bicep
+                drawLimb(13, 15, forearmThickness) // Left Forearm
+                drawLimb(12, 14, bicepThickness) // Right Bicep
+                drawLimb(14, 16, forearmThickness) // Right Forearm
+
+                // Legs
+                drawLimb(23, 25, thighThickness) // Left Thigh
+                drawLimb(25, 27, calfThickness) // Left Calf
+                drawLimb(24, 26, thighThickness) // Right Thigh
+                drawLimb(26, 28, calfThickness) // Right Calf
+                
+                // Hands and Feet (Creates rounded stubs at the end of limbs)
+                drawLimb(15, 19, forearmThickness * 0.8f) // L Hand
+                drawLimb(16, 20, forearmThickness * 0.8f) // R Hand
+                drawLimb(27, 31, calfThickness * 0.8f) // L Foot
+                drawLimb(28, 32, calfThickness * 0.8f) // R Foot
             }
         }
-    }
-
-    fun setResults(
-        poseLandmarkerResults: PoseLandmarkerResult,
-        imageHeight: Int,
-        imageWidth: Int,
-        runningMode: RunningMode = RunningMode.IMAGE
-    ) {
-        results = poseLandmarkerResults
-
-        this.imageHeight = imageHeight
-        this.imageWidth = imageWidth
-
-        scaleFactor = when (runningMode) {
-            RunningMode.IMAGE,
-            RunningMode.VIDEO -> {
-                min(width * 1f / imageWidth, height * 1f / imageHeight)
-            }
-            RunningMode.LIVE_STREAM -> {
-                // PreviewView is in FILL_START mode. So we need to scale up the
-                // landmarks to match with the size that the captured images will be
-                // displayed.
-                max(width * 1f / imageWidth, height * 1f / imageHeight)
-            }
-        }
-        invalidate()
-    }
-
-    companion object {
-        private const val LANDMARK_STROKE_WIDTH = 12F
     }
 }
