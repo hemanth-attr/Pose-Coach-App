@@ -66,6 +66,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraFacing = CameraSelector.LENS_FACING_BACK
+    private var frameCounter = 0
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -376,24 +377,32 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
         }
     }
 
-  @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-    private fun detectPose(imageProxy: ImageProxy) {
-        if(this::poseLandmarkerHelper.isInitialized && this::segmenterHelper.isInitialized) {
+@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
+ private fun detectPose(imageProxy: ImageProxy) {
+     if(this::poseLandmarkerHelper.isInitialized && this::segmenterHelper.isInitialized) {
 
-            val isFront = cameraFacing == CameraSelector.LENS_FACING_FRONT
+         try {
+             val isFront = cameraFacing == CameraSelector.LENS_FACING_FRONT
 
-            
-            // AI 2: Pixel Segmentation
-            segmenterHelper.segmentLiveStreamFrame(imageProxy, isFrontCamera = isFront)
+             frameCounter++
 
-            // AI 1: Pose Math
-            poseLandmarkerHelper.detectLiveStream(imageProxy, isFrontCamera = isFront)
+             // THE PRO TRICK: Alternate frames to prevent memory collisions!
+             if (frameCounter % 2 == 0) {
+                 // Even Frames go to the Segmentation Mask AI
+                 segmenterHelper.segmentLiveStreamFrame(imageProxy, isFrontCamera = isFront)
+             } else {
+                 // Odd Frames go to the Pose Skeleton AI
+                 poseLandmarkerHelper.detectLiveStream(imageProxy, isFrontCamera = isFront)
+             }
 
+         } catch (e: Exception) {
+             imageProxy.close()
+         }
 
-        } else {
-            imageProxy.close()
-        }
-    }
+     } else {
+         imageProxy.close()
+     }
+ }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
@@ -539,21 +548,29 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
     }
 
     // --- SEGMENTER LISTENER ---
+    // --- SEGMENTER LISTENER ---
     override fun onSegmentationResults(resultBundle: SegmenterHelper.ResultBundle) {
         activity?.runOnUiThread {
             val overlay = _fragmentCameraBinding?.overlay
             if (overlay != null) {
-                // Safely extract the float buffer using MediaPipe's framework
-                val mask = resultBundle.result.confidenceMasks().get()[1]
-                val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
-                val maskFloatBuffer = byteBuffer.asFloatBuffer()
-                
-                // Pass the mask and dimensions to the overlay
-                overlay.setSegmentationMask(
-                    maskFloatBuffer, 
-                    resultBundle.inputImageWidth, 
-                    resultBundle.inputImageHeight
-                )
+                try {
+                    // CRASH FIX: Use .last() to always safely get the human mask
+                    val masks = resultBundle.result.confidenceMasks().get()
+                    if (masks.isNotEmpty()) {
+                        val mask = masks.last() 
+                        
+                        val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
+                        val maskFloatBuffer = byteBuffer.asFloatBuffer()
+                        
+                        overlay.setSegmentationMask(
+                            maskFloatBuffer, 
+                            resultBundle.inputImageWidth, 
+                            resultBundle.inputImageHeight
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Ignore mask rendering errors so the app stays alive
+                }
             }
         }
     }

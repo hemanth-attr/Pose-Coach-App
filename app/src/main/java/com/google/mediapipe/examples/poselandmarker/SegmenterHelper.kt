@@ -18,6 +18,10 @@ class SegmenterHelper(
     val segmenterListener: SegmenterListener?
 ) {
     private var imageSegmenter: ImageSegmenter? = null
+    
+    // MEMORY FIX: Recycle these instead of creating them 30 times a second!
+    private var bitmapBuffer: Bitmap? = null
+    private var rotatedBitmap: Bitmap? = null
 
     init {
         setupSegmenter()
@@ -30,64 +34,63 @@ class SegmenterHelper(
 
     private fun setupSegmenter() {
         val baseOptionsBuilder = BaseOptions.builder()
-        // Loading the model you just downloaded!
         baseOptionsBuilder.setModelAssetPath("selfie_segmenter.tflite")
 
         try {
             val optionsBuilder = ImageSegmenter.ImageSegmenterOptions.builder()
                 .setBaseOptions(baseOptionsBuilder.build())
                 .setRunningMode(RunningMode.LIVE_STREAM)
+                .setOutputConfidenceMasks(true) // CRUCIAL FIX: Tell AI to output the mask!
+                .setOutputCategoryMask(false)
                 .setResultListener(this::returnSegmentationResult)
                 .setErrorListener(this::returnSegmentationError)
 
-            val options = optionsBuilder.build()
-            imageSegmenter = ImageSegmenter.createFromOptions(context, options)
+            imageSegmenter = ImageSegmenter.createFromOptions(context, optionsBuilder.build())
         } catch (e: Exception) {
             segmenterListener?.onError("Segmenter failed to initialize: ${e.message}")
-            Log.e("SegmenterHelper", "Segmenter failed to load model with error: ${e.message}")
         }
     }
 
-   fun segmentLiveStreamFrame(imageProxy: ImageProxy, isFrontCamera: Boolean) {
-        if (imageSegmenter == null) return
+    fun segmentLiveStreamFrame(imageProxy: ImageProxy, isFrontCamera: Boolean) {
+        if (imageSegmenter == null) {
+            imageProxy.close()
+            return
+        }
 
-        val frameTime = SystemClock.uptimeMillis()
-        val bitmapBuffer = Bitmap.createBitmap(
-            imageProxy.width,
-            imageProxy.height,
-            Bitmap.Config.ARGB_8888
-        )
-
-        // --- THE CRASH FIX ---
-        // We carefully copy the pixels without destroying the original camera frame
         try {
-            imageProxy.planes[0].buffer.rewind() // Ensure we start at the beginning
-            bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
-            imageProxy.planes[0].buffer.rewind() // Rewind it again so the Pose AI can read it next!
-        } catch (e: Exception) {
-            return // If the frame is corrupted, skip it instead of crashing
-        }
-
-        val matrix = Matrix().apply {
-            postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-            if (isFrontCamera) {
-                postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+            val frameTime = SystemClock.uptimeMillis()
+            
+            // Only create the bitmap once!
+            if (bitmapBuffer == null || bitmapBuffer!!.width != imageProxy.width || bitmapBuffer!!.height != imageProxy.height) {
+                bitmapBuffer = Bitmap.createBitmap(imageProxy.width, imageProxy.height, Bitmap.Config.ARGB_8888)
             }
+
+            imageProxy.planes[0].buffer.rewind()
+            bitmapBuffer!!.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
+
+            val matrix = Matrix().apply {
+                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                if (isFrontCamera) {
+                    postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+                }
+            }
+            
+            rotatedBitmap = Bitmap.createBitmap(
+                bitmapBuffer!!, 0, 0, bitmapBuffer!!.width, bitmapBuffer!!.height, matrix, true
+            )
+            
+            val mpImage = BitmapImageBuilder(rotatedBitmap!!).build()
+            imageSegmenter?.segmentAsync(mpImage, frameTime)
+            
+        } catch (e: Exception) {
+            Log.e("SegmenterHelper", "Frame skipped due to buffer issue")
+        } finally {
+            // CRUCIAL FIX: Safely close the image so the camera can capture the next one!
+            imageProxy.close()
         }
-        
-        val rotatedBitmap = Bitmap.createBitmap(
-            bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true
-        )
-        
-        val mpImage = BitmapImageBuilder(rotatedBitmap).build()
-        
-        imageSegmenter?.segmentAsync(mpImage, frameTime)
     }
-    private fun returnSegmentationResult(
-        result: ImageSegmenterResult,
-        image: MPImage
-    ) {
-        val finishTimeMs = SystemClock.uptimeMillis()
+
+    private fun returnSegmentationResult(result: ImageSegmenterResult, image: MPImage) {
         segmenterListener?.onSegmentationResults(
             ResultBundle(result, image.width, image.height)
         )
