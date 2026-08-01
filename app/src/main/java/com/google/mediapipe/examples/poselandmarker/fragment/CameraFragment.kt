@@ -45,10 +45,9 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
-import com.google.mediapipe.examples.poselandmarker.SegmenterHelper
 import org.opencv.android.OpenCVLoader
 
-class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, SegmenterHelper.SegmenterListener {
+class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     companion object {
         private const val TAG = "Pose Landmarker"
     }
@@ -59,14 +58,12 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
         get() = _fragmentCameraBinding!!
 
     private lateinit var poseLandmarkerHelper: PoseLandmarkerHelper
-    private lateinit var segmenterHelper: SegmenterHelper
     private val viewModel: MainViewModel by activityViewModels()
     private var preview: Preview? = null
     private var imageAnalyzer: ImageAnalysis? = null
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraFacing = CameraSelector.LENS_FACING_BACK
-    private var frameCounter = 0
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -156,12 +153,6 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
                 minPosePresenceConfidence = viewModel.currentMinPosePresenceConfidence,
                 currentDelegate = viewModel.currentDelegate,
                 poseLandmarkerHelperListener = this
-            )
-            // ADD THIS TO INITIALIZE THE SEGMENTER
-            segmenterHelper = SegmenterHelper(
-                context = requireContext(),
-                segmenterListener = this
-            )
         }
 
         // Attach listeners to UI control widgets
@@ -385,26 +376,13 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
 
 @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
  private fun detectPose(imageProxy: ImageProxy) {
-     if(this::poseLandmarkerHelper.isInitialized && this::segmenterHelper.isInitialized) {
-
+     if(this::poseLandmarkerHelper.isInitialized) {
          try {
              val isFront = cameraFacing == CameraSelector.LENS_FACING_FRONT
-
-             frameCounter++
-
-             // THE PRO TRICK: Alternate frames to prevent memory collisions!
-             if (frameCounter % 2 == 0) {
-                 // Even Frames go to the Segmentation Mask AI
-                 segmenterHelper.segmentLiveStreamFrame(imageProxy, isFrontCamera = isFront)
-             } else {
-                 // Odd Frames go to the Pose Skeleton AI
-                 poseLandmarkerHelper.detectLiveStream(imageProxy, isFrontCamera = isFront)
-             }
-
+             poseLandmarkerHelper.detectLiveStream(imageProxy, isFrontCamera = isFront)
          } catch (e: Exception) {
              imageProxy.close()
          }
-
      } else {
          imageProxy.close()
      }
@@ -466,8 +444,215 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
                 overlay.targetPose = currentTargetPose
                 
                 try {
-                    if (results.isNotEmpty() && results.first().landmarks().isNotEmpty() && currentTargetPose != null) {
-                        val liveLandmarks = results.first().landmarks()[0]
+                    if (results.isNotEmpty()) {
+                        val firstResult = results.first()
+                        
+                        // Extract Native Segmentation Mask
+                        firstResult.segmentationMasks()?.let { masks ->
+                            if (masks.isNotEmpty()) {
+                                val mask = masks.first()
+                                val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
+                                val maskFloatBuffer = byteBuffer.asFloatBuffer()
+                                overlay.setSegmentationMask(maskFloatBuffer, mask.width, mask.height)
+                            }
+                        }
+
+                        if (firstResult.landmarks().isNotEmpty() && currentTargetPose != null) {
+                            val liveLandmarks = firstResult.landmarks()[0]
+                        
+                        // Normalize the live camera body!
+                        val normalizedLive = normalizeLandmarks(liveLandmarks)
+                        
+                        // Compare Live Body vs Target Body
+                        var totalError = 0.0
+                        val jointsToCheck = listOf(11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
+                        var validJointsCount = 0
+                        
+                        for (i in jointsToCheck) {
+                            // CRASH FIX: Ensure both lists actually contain this joint index before doing math
+                            if (i < currentTargetPose!!.size && i < normalizedLive.size) {
+                                val distance = Math.sqrt(
+                                    Math.pow((currentTargetPose!![i].x - normalizedLive[i].x).toDouble(), 2.0) + 
+                                    Math.pow((currentTargetPose!![i].y - normalizedLive[i].y).toDouble(), 2.0)
+                                )
+                                totalError += distance
+                                validJointsCount++
+                            }
+                        }
+                        
+                        // Prevent division by zero if no joints were valid
+                        if (validJointsCount > 0) {
+                            val averageError = totalError / validJointsCount
+                            // If error is low, the pose matches!
+                            overlay.isPoseMatched = (averageError < 0.6) // Adjust 0.6 to make it harder or easier
+                        } else {
+                            overlay.isPoseMatched = false
+                        }
+                        
+                        // Send the live skeleton fallback data to the overlay
+                        overlay.setResults(
+                            results.first(),
+                            resultBundle.inputImageHeight,
+                            resultBundle.inputImageWidth,
+                            com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM
+                        )
+                        
+                    } else {
+                        overlay.isPoseMatched = false
+                        overlay.clearLivePose()
+                    }
+                } catch (e: Exception) {
+                    // CATCH-ALL CRASH FIX: If the math fails, just mark the pose as false instead of closing the app!
+                    overlay.isPoseMatched = false
+                }
+                
+                overlay.invalidate()
+            }
+        }
+    }
+
+    override fun onError(error: String, errorCode: Int) {
+        activity?.runOnUiThread {
+            Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {
+        val hipCenterX = (landmarks[23].x() + landmarks[24].x()) / 2f
+        val hipCenterY = (landmarks[23].y() + landmarks[24].y()) / 2f
+        val shoulderCenterX = (landmarks[11].x() + landmarks[12].x()) / 2f
+        val shoulderCenterY = (landmarks[11].y() + landmarks[12].y()) / 2f
+
+        val torsoScale = Math.sqrt(
+            Math.pow((shoulderCenterX - hipCenterX).toDouble(), 2.0) +
+            Math.pow((shoulderCenterY - hipCenterY).toDouble(), 2.0)
+        ).toFloat()
+
+        val safeScale = if (torsoScale < 0.001f) 1f else torsoScale
+
+        return landmarks.map { lm ->
+            android.graphics.PointF(
+        // Preview. Only using the 4:3 ratio because this is the closest to our models
+        preview = Preview.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3)
+            .setTargetRotation(fragmentCameraBinding.viewFinder.display.rotation)
+            .build()
+
+        // ImageAnalysis. Using RGBA 8888 to match how our models work
+        imageAnalyzer =
+            ImageAnalysis.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                .setTargetRotation(fragmentCameraBinding.viewFinder.display.rotation)
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                .build()
+                // The analyzer can then be assigned to the instance
+                .also {
+                    it.setAnalyzer(backgroundExecutor) { image ->
+                        detectPose(image)
+                    }
+                }
+
+        // Must unbind the use-cases before rebinding them
+        cameraProvider.unbindAll()
+
+        try {
+            // A variable number of use-cases can be passed here -
+            // camera provides access to CameraControl & CameraInfo
+            camera = cameraProvider.bindToLifecycle(
+                this, cameraSelector, preview, imageAnalyzer
+            )
+
+            // Attach the viewfinder's surface provider to preview use case
+            preview?.setSurfaceProvider(fragmentCameraBinding.viewFinder.surfaceProvider)
+        } catch (exc: Exception) {
+            Log.e(TAG, "Use case binding failed", exc)
+        }
+    }
+
+@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
+ private fun detectPose(imageProxy: ImageProxy) {
+     if(this::poseLandmarkerHelper.isInitialized) {
+         try {
+             val isFront = cameraFacing == CameraSelector.LENS_FACING_FRONT
+             poseLandmarkerHelper.detectLiveStream(imageProxy, isFrontCamera = isFront)
+         } catch (e: Exception) {
+             imageProxy.close()
+         }
+     } else {
+         imageProxy.close()
+     }
+ }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        imageAnalyzer?.targetRotation =
+            fragmentCameraBinding.viewFinder.display.rotation
+    }
+
+    // Update UI after pose have been detected. Extracts original
+    // image height/width to scale and place the landmarks properly through
+    // OverlayView
+// ---------------------------------------------------------
+    // AI MATH ENGINE (DATABASE VERSION)
+    // ---------------------------------------------------------
+    
+    private var poseDatabase: Map<String, List<android.graphics.PointF>> = emptyMap()
+    private var currentTargetPoseName: String = ""
+    private var currentTargetPose: List<android.graphics.PointF>? = null
+
+    // Reads your poses.json file from the assets folder
+    private fun loadPoseDatabase(): Map<String, List<android.graphics.PointF>> {
+        val poseMap = mutableMapOf<String, List<android.graphics.PointF>>()
+        try {
+            val jsonString = requireContext().assets.open("poses.json").bufferedReader().use { it.readText() }
+            val jsonObject = JSONObject(jsonString)
+
+            val keys = jsonObject.keys()
+            while (keys.hasNext()) {
+                val poseName = keys.next()
+                val pointsArray = jsonObject.getJSONArray(poseName)
+                val pointList = mutableListOf<android.graphics.PointF>()
+
+                for (i in 0 until pointsArray.length()) {
+                    val pointObj = pointsArray.getJSONObject(i)
+                    val x = pointObj.getDouble("x").toFloat()
+                    val y = pointObj.getDouble("y").toFloat()
+                    pointList.add(android.graphics.PointF(x, y))
+                }
+                poseMap[poseName] = pointList
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return poseMap
+    }
+
+    override fun onResults(
+        resultBundle: PoseLandmarkerHelper.ResultBundle
+    ) {
+        val results = resultBundle.results
+        
+        activity?.runOnUiThread {
+            val overlay = _fragmentCameraBinding?.overlay
+            if (overlay != null) {
+                // Pass the CURRENT target pose to the screen so it draws it
+                overlay.targetPose = currentTargetPose
+                
+                try {
+                    if (results.isNotEmpty()) {
+                        val firstResult = results.first()
+                        
+                        // Extract Native Segmentation Mask
+                        firstResult.segmentationMasks()?.let { masks ->
+                            if (masks.isNotEmpty()) {
+                                val mask = masks.first()
+                                val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
+                                val maskFloatBuffer = byteBuffer.asFloatBuffer()
+                                overlay.setSegmentationMask(maskFloatBuffer, mask.width, mask.height)
+                            }
+                        }
+
+                        if (firstResult.landmarks().isNotEmpty() && currentTargetPose != null) {
+                            val liveLandmarks = firstResult.landmarks()[0]
                         
                         // Normalize the live camera body!
                         val normalizedLive = normalizeLandmarks(liveLandmarks)
@@ -546,39 +731,4 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
             )
         }
     }
-
-    // --- REQUIRED BY SegmenterListener ---
-    override fun onError(error: String) {
-        activity?.runOnUiThread {
-            Toast.makeText(requireContext(), "Segmenter Error: $error", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-   // --- SEGMENTER LISTENER ---
-    override fun onSegmentationResults(resultBundle: SegmenterHelper.ResultBundle) {
-        activity?.runOnUiThread {
-            val overlay = _fragmentCameraBinding?.overlay
-            if (overlay != null) {
-                try {
-                    val masks = resultBundle.result.confidenceMasks().get()
-                    if (masks.isNotEmpty()) {
-                        // Grab the actual human mask securely
-                        val mask = masks.last()
-                        val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
-                        val maskFloatBuffer = byteBuffer.asFloatBuffer()
-                        
-                        // CRITICAL FIX: Pass the precise width/height of the mask itself!
-                        overlay.setSegmentationMask(
-                            maskFloatBuffer, 
-                            mask.width, 
-                            mask.height
-                        )
-                    }
-                } catch (e: Exception) {
-                    // Ignore mask rendering errors so it doesn't crash
-                }
-            }
-        }
-    }
 } // <-- THIS BRACKET CLOSES THE ENTIRE CameraFragment CLASS
-

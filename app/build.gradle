@@ -98,4 +98,7 @@ dependencies {
 
     // MediaPipe Library
     implementation 'com.google.mediapipe:tasks-vision:0.10.29'
+
+    // OpenCV for Contour Extraction
+    implementation 'org.opencv:opencv:4.9.0'
 }

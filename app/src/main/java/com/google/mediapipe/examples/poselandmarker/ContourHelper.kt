@@ -11,6 +11,9 @@ import java.nio.FloatBuffer
 
 object ContourHelper {
 
+    private var emaMask: FloatArray? = null
+    private const val EMA_ALPHA = 0.4f // Balances responsiveness and smoothness
+
     fun extractSmoothContour(
         maskBuffer: FloatBuffer,
         maskWidth: Int,
@@ -18,22 +21,38 @@ object ContourHelper {
         viewWidth: Float,
         viewHeight: Float
     ): List<PointF> {
-        val floatArray = FloatArray(maskWidth * maskHeight)
+        val size = maskWidth * maskHeight
+        val floatArray = FloatArray(size)
         maskBuffer.rewind()
         maskBuffer.get(floatArray)
 
+        // 1. TEMPORAL EMA FILTERING (Fixes "Boiling Edges")
+        if (emaMask == null || emaMask!!.size != size) {
+            emaMask = floatArray.clone()
+        } else {
+            val ema = emaMask!!
+            for (i in 0 until size) {
+                ema[i] = (EMA_ALPHA * floatArray[i]) + ((1f - EMA_ALPHA) * ema[i])
+            }
+        }
+
         val sourceMat = Mat(maskHeight, maskWidth, CvType.CV_32FC1)
-        sourceMat.put(0, 0, floatArray)
+        sourceMat.put(0, 0, emaMask!!)
 
         val binaryMat = Mat()
-        Imgproc.threshold(sourceMat, binaryMat, 0.5, 255.0, Imgproc.THRESH_BINARY)
+        Imgproc.threshold(sourceMat, binaryMat, 0.35, 255.0, Imgproc.THRESH_BINARY)
         
         val byteMat = Mat()
         binaryMat.convertTo(byteMat, CvType.CV_8UC1)
 
+        // 2. MORPHOLOGICAL SMOOTHING (Unifies Overlapping Limbs)
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, org.opencv.core.Size(15.0, 15.0))
+        val closedMat = Mat()
+        Imgproc.morphologyEx(byteMat, closedMat, Imgproc.MORPH_CLOSE, kernel)
+
         val contours = ArrayList<MatOfPoint>()
         val hierarchy = Mat()
-        Imgproc.findContours(byteMat, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
+        Imgproc.findContours(closedMat, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
 
         var maxArea = 0.0
         var bestContour: MatOfPoint? = null
@@ -51,7 +70,7 @@ object ContourHelper {
         bestContour?.let { contour ->
             val contour2f = MatOfPoint2f(*contour.toArray())
             val approxCurve = MatOfPoint2f()
-            val epsilon = 0.008 * Imgproc.arcLength(contour2f, true) 
+            val epsilon = 0.015 * Imgproc.arcLength(contour2f, true) // Smooths out the polygon more
             Imgproc.approxPolyDP(contour2f, approxCurve, epsilon, true)
 
             val scaleX = viewWidth / maskWidth.toFloat()
@@ -65,6 +84,8 @@ object ContourHelper {
         sourceMat.release()
         binaryMat.release()
         byteMat.release()
+        closedMat.release()
+        kernel.release()
         hierarchy.release()
 
         return finalPoints

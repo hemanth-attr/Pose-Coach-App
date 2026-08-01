@@ -116,6 +116,7 @@ class PoseLandmarkerHelper(
                     .setMinTrackingConfidence(minPoseTrackingConfidence)
                     .setMinPosePresenceConfidence(minPosePresenceConfidence)
                     .setRunningMode(runningMode)
+                    .setOutputSegmentationMasks(true)
 
             // The ResultListener and ErrorListener only use for LIVE_STREAM mode.
             if (runningMode == RunningMode.LIVE_STREAM) {
