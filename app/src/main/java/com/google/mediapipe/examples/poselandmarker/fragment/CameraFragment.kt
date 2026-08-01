@@ -153,6 +153,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                 minPosePresenceConfidence = viewModel.currentMinPosePresenceConfidence,
                 currentDelegate = viewModel.currentDelegate,
                 poseLandmarkerHelperListener = this
+            )
         }
 
         // Attach listeners to UI control widgets
@@ -459,39 +460,43 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
                         if (firstResult.landmarks().isNotEmpty() && currentTargetPose != null) {
                             val liveLandmarks = firstResult.landmarks()[0]
-                        
-                        // Normalize the live camera body!
-                        val normalizedLive = normalizeLandmarks(liveLandmarks)
-                        
-                        // Compare Live Body vs Target Body
-                        var totalError = 0.0
-                        val jointsToCheck = listOf(11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
-                        var validJointsCount = 0
-                        
-                        for (i in jointsToCheck) {
-                            // CRASH FIX: Ensure both lists actually contain this joint index before doing math
-                            if (i < currentTargetPose!!.size && i < normalizedLive.size) {
-                                val distance = Math.sqrt(
-                                    Math.pow((currentTargetPose!![i].x - normalizedLive[i].x).toDouble(), 2.0) + 
-                                    Math.pow((currentTargetPose!![i].y - normalizedLive[i].y).toDouble(), 2.0)
-                                )
-                                totalError += distance
-                                validJointsCount++
+                            
+                            // Normalize the live camera body!
+                            val normalizedLive = normalizeLandmarks(liveLandmarks)
+                            
+                            // Compare Live Body vs Target Body
+                            var totalError = 0.0
+                            val jointsToCheck = listOf(11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
+                            var validJointsCount = 0
+                            
+                            for (i in jointsToCheck) {
+                                // CRASH FIX: Ensure both lists actually contain this joint index before doing math
+                                if (i < currentTargetPose!!.size && i < normalizedLive.size) {
+                                    val distance = Math.sqrt(
+                                        Math.pow((currentTargetPose!![i].x - normalizedLive[i].x).toDouble(), 2.0) + 
+                                        Math.pow((currentTargetPose!![i].y - normalizedLive[i].y).toDouble(), 2.0)
+                                    )
+                                    totalError += distance
+                                    validJointsCount++
+                                }
                             }
-                        }
-                        
-                        // Prevent division by zero if no joints were valid
-                        if (validJointsCount > 0) {
-                            val averageError = totalError / validJointsCount
-                            // If error is low, the pose matches!
-                            overlay.isPoseMatched = (averageError < 0.6) // Adjust 0.6 to make it harder or easier
+                            
+                            // Prevent division by zero if no joints were valid
+                            if (validJointsCount > 0) {
+                                val averageError = totalError / validJointsCount
+                                // If error is low, the pose matches!
+                                overlay.isPoseMatched = (averageError < 0.6) // Adjust 0.6 to make it harder or easier
+                            } else {
+                                overlay.isPoseMatched = false
+                            }
                         } else {
                             overlay.isPoseMatched = false
+                            overlay.clearLivePose()
                         }
                         
                         // Send the live skeleton fallback data to the overlay
                         overlay.setResults(
-                            results.first(),
+                            firstResult,
                             resultBundle.inputImageHeight,
                             resultBundle.inputImageWidth,
                             com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM
