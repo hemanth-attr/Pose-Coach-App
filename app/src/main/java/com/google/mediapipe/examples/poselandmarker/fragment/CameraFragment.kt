@@ -44,6 +44,7 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import org.json.JSONObject
 
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
@@ -152,6 +153,16 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         // Attach listeners to UI control widgets
         initBottomSheetControls()
+    
+    // Load the database when the camera screen opens!
+        poseDatabase = loadPoseDatabase()
+        if (poseDatabase.isNotEmpty()) {
+            // Grab the very first pose in your database to start
+            currentTargetPoseName = poseDatabase.keys.first()
+            currentTargetPose = poseDatabase[currentTargetPoseName]
+
+            Toast.makeText(requireContext(), "Loaded 44 Poses! Try: $currentTargetPoseName", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun initBottomSheetControls() {
@@ -377,7 +388,42 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     // Update UI after pose have been detected. Extracts original
     // image height/width to scale and place the landmarks properly through
     // OverlayView
-override fun onResults(
+// ---------------------------------------------------------
+    // AI MATH ENGINE (DATABASE VERSION)
+    // ---------------------------------------------------------
+    
+    private var poseDatabase: Map<String, List<android.graphics.PointF>> = emptyMap()
+    private var currentTargetPoseName: String = ""
+    private var currentTargetPose: List<android.graphics.PointF>? = null
+
+    // Reads your poses.json file from the assets folder
+    private fun loadPoseDatabase(): Map<String, List<android.graphics.PointF>> {
+        val poseMap = mutableMapOf<String, List<android.graphics.PointF>>()
+        try {
+            val jsonString = requireContext().assets.open("poses.json").bufferedReader().use { it.readText() }
+            val jsonObject = JSONObject(jsonString)
+
+            val keys = jsonObject.keys()
+            while (keys.hasNext()) {
+                val poseName = keys.next()
+                val pointsArray = jsonObject.getJSONArray(poseName)
+                val pointList = mutableListOf<android.graphics.PointF>()
+
+                for (i in 0 until pointsArray.length()) {
+                    val pointObj = pointsArray.getJSONObject(i)
+                    val x = pointObj.getDouble("x").toFloat()
+                    val y = pointObj.getDouble("y").toFloat()
+                    pointList.add(android.graphics.PointF(x, y))
+                }
+                poseMap[poseName] = pointList
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return poseMap
+    }
+
+    override fun onResults(
         resultBundle: PoseLandmarkerHelper.ResultBundle
     ) {
         val results = resultBundle.results
@@ -385,10 +431,10 @@ override fun onResults(
         activity?.runOnUiThread {
             val overlay = _fragmentCameraBinding?.overlay
             if (overlay != null) {
-                // Pass the target pose to the screen so it draws it
-                overlay.targetPose = dummyTargetPose
+                // Pass the CURRENT target pose to the screen so it draws it
+                overlay.targetPose = currentTargetPose
                 
-                if (results.isNotEmpty() && results.first().landmarks().isNotEmpty()) {
+                if (results.isNotEmpty() && results.first().landmarks().isNotEmpty() && currentTargetPose != null) {
                     val liveLandmarks = results.first().landmarks()[0]
                     
                     // Normalize the live camera body!
@@ -400,16 +446,17 @@ override fun onResults(
                     
                     for (i in jointsToCheck) {
                         val distance = Math.sqrt(
-                            Math.pow((dummyTargetPose[i].x - normalizedLive[i].x).toDouble(), 2.0) + 
-                            Math.pow((dummyTargetPose[i].y - normalizedLive[i].y).toDouble(), 2.0)
+                            Math.pow((currentTargetPose!![i].x - normalizedLive[i].x).toDouble(), 2.0) + 
+                            Math.pow((currentTargetPose!![i].y - normalizedLive[i].y).toDouble(), 2.0)
                         )
                         totalError += distance
                     }
                     
                     val averageError = totalError / jointsToCheck.size
                     
-                    // If error is low, the pose matches perfectly regardless of distance!
-                    overlay.isPoseMatched = (averageError < 0.7) 
+                    // If error is low, the pose matches!
+                    overlay.isPoseMatched = (averageError < 0.6) // Adjust 0.6 to make it harder or easier
+                    
                 } else {
                     overlay.isPoseMatched = false
                 }
@@ -418,34 +465,10 @@ override fun onResults(
         }
     }
 
-    // REQUIRED BY LandmarkerListener: Handle errors from MediaPipe
     override fun onError(error: String, errorCode: Int) {
         activity?.runOnUiThread {
             Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
         }
-    }
-
-    // ---------------------------------------------------------
-    // AI MATH ENGINE
-    // ---------------------------------------------------------
-    
-    // A pre-calculated normalized "T-Pose" for testing
-    private val dummyTargetPose: List<android.graphics.PointF> = MutableList(33) { android.graphics.PointF(0f, 0f) }.apply {
-        // Torso
-        this[11] = android.graphics.PointF(-0.5f, -1.0f) // Left Shoulder
-        this[12] = android.graphics.PointF(0.5f, -1.0f)  // Right Shoulder
-        this[23] = android.graphics.PointF(-0.3f, 0.0f)  // Left Hip
-        this[24] = android.graphics.PointF(0.3f, 0.0f)   // Right Hip
-        // Arms (Straight out to the sides for T-Pose)
-        this[13] = android.graphics.PointF(-1.5f, -1.0f) // Left Elbow
-        this[15] = android.graphics.PointF(-2.5f, -1.0f) // Left Wrist
-        this[14] = android.graphics.PointF(1.5f, -1.0f)  // Right Elbow
-        this[16] = android.graphics.PointF(2.5f, -1.0f)  // Right Wrist
-        // Legs
-        this[25] = android.graphics.PointF(-0.3f, 1.0f)  // Left Knee
-        this[27] = android.graphics.PointF(-0.3f, 2.0f)  // Left Ankle
-        this[26] = android.graphics.PointF(0.3f, 1.0f)   // Right Knee
-        this[28] = android.graphics.PointF(0.3f, 2.0f)   // Right Ankle
     }
 
     private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {
