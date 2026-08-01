@@ -1,24 +1,10 @@
-/*
- * Copyright 2023 The TensorFlow Authors. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *       http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.google.mediapipe.examples.poselandmarker
 
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
@@ -27,27 +13,21 @@ import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import kotlin.math.max
 import kotlin.math.min
-import android.graphics.BitmapFactory
-import com.google.mediapipe.examples.poselandmarker.R
 
 class OverlayView(context: Context?, attrs: AttributeSet?) :
     View(context, attrs) {
+
     private var results: PoseLandmarkerResult? = null
     private var pointPaint = Paint()
     private var linePaint = Paint()
-var targetPose: List<android.graphics.PointF>? = null
-    var isPoseMatched = false
 
-    private var targetPaint = Paint().apply {
-        color = android.graphics.Color.WHITE
-        strokeWidth = 12f
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        alpha = 200 // Semi-transparent like Huawei
-    }
     private var scaleFactor: Float = 1f
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
+
+    // --- OUR AI ENGINE VARIABLES ---
+    var targetPose: List<PointF>? = null
+    var isPoseMatched = false
 
     init {
         initPaints()
@@ -62,8 +42,7 @@ var targetPose: List<android.graphics.PointF>? = null
     }
 
     private fun initPaints() {
-        linePaint.color =
-            ContextCompat.getColor(context!!, R.color.mp_color_primary)
+        linePaint.color = ContextCompat.getColor(context!!, R.color.mp_color_primary)
         linePaint.strokeWidth = LANDMARK_STROKE_WIDTH
         linePaint.style = Paint.Style.STROKE
 
@@ -72,35 +51,31 @@ var targetPose: List<android.graphics.PointF>? = null
         pointPaint.style = Paint.Style.FILL
     }
 
-  override fun draw(canvas: Canvas) {
+    override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
+        // 1. DRAW OUR FLESHY SILHOUETTE
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
             val centerY = canvas.height / 2f
-            val drawScale = canvas.height / 3.5f // Scales the human to fit the screen nicely
+            val drawScale = canvas.height / 3.5f
 
-            // Helper function to get coordinates
-            fun getPoint(idx: Int): android.graphics.PointF {
-                return android.graphics.PointF(
+            fun getPoint(idx: Int): PointF {
+                return PointF(
                     centerX + (pose[idx].x * drawScale),
                     centerY + (pose[idx].y * drawScale)
                 )
             }
 
-            // 1. The Paint that makes it look like a solid human silhouette
             val silhouettePaint = Paint().apply {
-                // Semi-transparent white (like Huawei), turns Green when matched
-                color = if (isPoseMatched) android.graphics.Color.GREEN else android.graphics.Color.argb(180, 255, 255, 255)
+                color = if (isPoseMatched) Color.GREEN else Color.argb(180, 255, 255, 255)
                 style = Paint.Style.FILL_AND_STROKE
                 strokeJoin = Paint.Join.ROUND
                 strokeCap = Paint.Cap.ROUND
                 isAntiAlias = true
             }
 
-            // Ensure we have all 33 points loaded
             if (pose.size >= 33) {
-                // Calculate dynamic body thicknesses based on screen size
                 val headRadius = drawScale * 0.18f
                 val torsoRoundness = drawScale * 0.1f
                 val bicepThickness = drawScale * 0.12f
@@ -108,16 +83,14 @@ var targetPose: List<android.graphics.PointF>? = null
                 val thighThickness = drawScale * 0.16f
                 val calfThickness = drawScale * 0.12f
 
-                // 2. Draw the Head
                 val nose = getPoint(0)
-                silhouettePaint.strokeWidth = 5f 
+                silhouettePaint.strokeWidth = 5f
                 canvas.drawCircle(nose.x, nose.y - (headRadius * 0.5f), headRadius, silhouettePaint)
 
-                // 3. Draw the Solid Torso
-                val p11 = getPoint(11) // L Shoulder
-                val p12 = getPoint(12) // R Shoulder
-                val p23 = getPoint(23) // L Hip
-                val p24 = getPoint(24) // R Hip
+                val p11 = getPoint(11)
+                val p12 = getPoint(12)
+                val p23 = getPoint(23)
+                val p24 = getPoint(24)
 
                 val torsoPath = android.graphics.Path()
                 torsoPath.moveTo(p11.x, p11.y)
@@ -125,11 +98,10 @@ var targetPose: List<android.graphics.PointF>? = null
                 torsoPath.lineTo(p24.x, p24.y)
                 torsoPath.lineTo(p23.x, p23.y)
                 torsoPath.close()
-                
-                silhouettePaint.strokeWidth = torsoRoundness // Gives the torso soft shoulders/hips
+
+                silhouettePaint.strokeWidth = torsoRoundness
                 canvas.drawPath(torsoPath, silhouettePaint)
 
-                // 4. Draw Thick "Human" Limbs
                 fun drawLimb(startIdx: Int, endIdx: Int, thickness: Float) {
                     val start = getPoint(startIdx)
                     val end = getPoint(endIdx)
@@ -137,24 +109,71 @@ var targetPose: List<android.graphics.PointF>? = null
                     canvas.drawLine(start.x, start.y, end.x, end.y, silhouettePaint)
                 }
 
-                // Arms
-                drawLimb(11, 13, bicepThickness) // Left Bicep
-                drawLimb(13, 15, forearmThickness) // Left Forearm
-                drawLimb(12, 14, bicepThickness) // Right Bicep
-                drawLimb(14, 16, forearmThickness) // Right Forearm
+                drawLimb(11, 13, bicepThickness)
+                drawLimb(13, 15, forearmThickness)
+                drawLimb(12, 14, bicepThickness)
+                drawLimb(14, 16, forearmThickness)
 
-                // Legs
-                drawLimb(23, 25, thighThickness) // Left Thigh
-                drawLimb(25, 27, calfThickness) // Left Calf
-                drawLimb(24, 26, thighThickness) // Right Thigh
-                drawLimb(26, 28, calfThickness) // Right Calf
-                
-                // Hands and Feet (Creates rounded stubs at the end of limbs)
-                drawLimb(15, 19, forearmThickness * 0.8f) // L Hand
-                drawLimb(16, 20, forearmThickness * 0.8f) // R Hand
-                drawLimb(27, 31, calfThickness * 0.8f) // L Foot
-                drawLimb(28, 32, calfThickness * 0.8f) // R Foot
+                drawLimb(23, 25, thighThickness)
+                drawLimb(25, 27, calfThickness)
+                drawLimb(24, 26, thighThickness)
+                drawLimb(26, 28, calfThickness)
+
+                drawLimb(15, 19, forearmThickness * 0.8f)
+                drawLimb(16, 20, forearmThickness * 0.8f)
+                drawLimb(27, 31, calfThickness * 0.8f)
+                drawLimb(28, 32, calfThickness * 0.8f)
             }
         }
+
+        // 2. ORIGINAL MEDIAPIPE DRAWING (Needed for GalleryFragment)
+        results?.let { poseLandmarkerResult ->
+            for (landmark in poseLandmarkerResult.landmarks()) {
+                for (normalizedLandmark in landmark) {
+                    canvas.drawPoint(
+                        normalizedLandmark.x() * imageWidth * scaleFactor,
+                        normalizedLandmark.y() * imageHeight * scaleFactor,
+                        pointPaint
+                    )
+                }
+
+                PoseLandmarker.POSE_LANDMARKS.forEach {
+                    canvas.drawLine(
+                        poseLandmarkerResult.landmarks().get(0).get(it!!.start()).x() * imageWidth * scaleFactor,
+                        poseLandmarkerResult.landmarks().get(0).get(it.start()).y() * imageHeight * scaleFactor,
+                        poseLandmarkerResult.landmarks().get(0).get(it.end()).x() * imageWidth * scaleFactor,
+                        poseLandmarkerResult.landmarks().get(0).get(it.end()).y() * imageHeight * scaleFactor,
+                        linePaint
+                    )
+                }
+            }
+        }
+    }
+
+    // REQUIRED BY GalleryFragment
+    fun setResults(
+        poseLandmarkerResults: PoseLandmarkerResult,
+        imageHeight: Int,
+        imageWidth: Int,
+        runningMode: RunningMode
+    ) {
+        results = poseLandmarkerResults
+        this.imageHeight = imageHeight
+        this.imageWidth = imageWidth
+
+        scaleFactor = when (runningMode) {
+            RunningMode.IMAGE,
+            RunningMode.VIDEO -> {
+                min(width * 1f / imageWidth, height * 1f / imageHeight)
+            }
+            RunningMode.LIVE_STREAM -> {
+                max(width * 1f / imageWidth, height * 1f / imageHeight)
+            }
+        }
+        invalidate()
+    }
+
+    companion object {
+        private const val LANDMARK_STROKE_WIDTH = 12F
     }
 }
