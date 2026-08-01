@@ -506,14 +506,23 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, Segm
         }
     }
 
+    // --- REQUIRED BY SegmenterListener ---
+    override fun onError(error: String) {
+        activity?.runOnUiThread {
+            Toast.makeText(requireContext(), "Segmenter Error: $error", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // --- SEGMENTER LISTENER ---
     override fun onSegmentationResults(resultBundle: SegmenterHelper.ResultBundle) {
         activity?.runOnUiThread {
             val overlay = _fragmentCameraBinding?.overlay
             if (overlay != null) {
-                // We grab the confidence mask of the human (Index 0 is background, Index 1 is the person)
-                val maskFloatBuffer = resultBundle.result.confidenceMasks().get().get(1).floatBuffer
-
+                // Safely extract the float buffer using MediaPipe's framework
+                val mask = resultBundle.result.confidenceMasks().get()[1]
+                val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
+                val maskFloatBuffer = byteBuffer.asFloatBuffer()
+                
                 // Pass the mask and dimensions to the overlay
                 overlay.setSegmentationMask(
                     maskFloatBuffer, 
