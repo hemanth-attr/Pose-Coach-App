@@ -11,7 +11,6 @@ import java.nio.FloatBuffer
 
 object ContourHelper {
 
-    // Converts the AI Mask into a simplified mathematical boundary
     fun extractSmoothContour(
         maskBuffer: FloatBuffer,
         maskWidth: Int,
@@ -19,7 +18,6 @@ object ContourHelper {
         viewWidth: Float,
         viewHeight: Float
     ): List<PointF> {
-        // 1. Convert the FloatBuffer (0.0 to 1.0) into an OpenCV Image (Mat)
         val floatArray = FloatArray(maskWidth * maskHeight)
         maskBuffer.rewind()
         maskBuffer.get(floatArray)
@@ -27,19 +25,16 @@ object ContourHelper {
         val sourceMat = Mat(maskHeight, maskWidth, CvType.CV_32FC1)
         sourceMat.put(0, 0, floatArray)
 
-        // 2. Threshold the image (Turn confidence > 0.5 into solid white, rest to black)
         val binaryMat = Mat()
         Imgproc.threshold(sourceMat, binaryMat, 0.5, 255.0, Imgproc.THRESH_BINARY)
         
         val byteMat = Mat()
         binaryMat.convertTo(byteMat, CvType.CV_8UC1)
 
-        // 3. Find the Contours (The outer edge of the white pixels)
         val contours = ArrayList<MatOfPoint>()
         val hierarchy = Mat()
         Imgproc.findContours(byteMat, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
 
-        // 4. Find the Largest Contour (The Human Body)
         var maxArea = 0.0
         var bestContour: MatOfPoint? = null
         for (contour in contours) {
@@ -51,15 +46,14 @@ object ContourHelper {
         }
 
         val finalPoints = mutableListOf<PointF>()
-        if (bestContour != null) {
-            // 5. Simplify the Contour (Ramer-Douglas-Peucker algorithm)
-            // This removes microscopic jagged pixel edges and reduces it to key structural points
-            val contour2f = MatOfPoint2f(*bestContour.toArray())
+        
+        // CRASH FIX: Using ?.let guarantees the Kotlin compiler won't throw a Smart Cast error!
+        bestContour?.let { contour ->
+            val contour2f = MatOfPoint2f(*contour.toArray())
             val approxCurve = MatOfPoint2f()
-            val epsilon = 0.008 * Imgproc.arcLength(contour2f, true) // Lower = more detailed, Higher = smoother
+            val epsilon = 0.008 * Imgproc.arcLength(contour2f, true) 
             Imgproc.approxPolyDP(contour2f, approxCurve, epsilon, true)
 
-            // 6. Scale points from the 256x256 mask up to your actual phone screen dimensions
             val scaleX = viewWidth / maskWidth.toFloat()
             val scaleY = viewHeight / maskHeight.toFloat()
 
@@ -68,7 +62,6 @@ object ContourHelper {
             }
         }
 
-        // Clean up C++ memory to prevent memory leaks
         sourceMat.release()
         binaryMat.release()
         byteMat.release()
@@ -77,7 +70,6 @@ object ContourHelper {
         return finalPoints
     }
 
-    // THE SECRET SAUCE: Converts rigid points into flowing organic curves
     fun createSplinePath(points: List<PointF>, tension: Float = 0.25f): Path {
         val path = Path()
         if (points.isEmpty()) return path
@@ -90,7 +82,7 @@ object ContourHelper {
         path.moveTo(points[0].x, points[0].y)
 
         for (i in 0 until points.size) {
-            val p0 = points[if (i > 0) i - 1 else points.size - 1] // Wrap around for closed loop
+            val p0 = points[if (i > 0) i - 1 else points.size - 1] 
             val p1 = points[i]
             val p2 = points[(i + 1) % points.size]
             val p3 = points[(i + 2) % points.size]

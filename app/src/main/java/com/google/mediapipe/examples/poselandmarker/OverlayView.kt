@@ -1,10 +1,8 @@
 package com.google.mediapipe.examples.poselandmarker
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.PointF
 import android.util.AttributeSet
@@ -36,9 +34,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     private var segmentationMask: FloatBuffer? = null
     private var maskWidth: Int = 0
     private var maskHeight: Int = 0
-    private var maskBitmap: Bitmap? = null
-
-    private var pixelArray: IntArray = IntArray(0)
 
     init {
         initPaints()
@@ -53,7 +48,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         initPaints()
     }
 
-    // NEW: Clears only the live camera skeleton so it doesn't freeze!
     fun clearLivePose() {
         results = null
         invalidate()
@@ -83,18 +77,16 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         val premiumOutlinePaint = Paint().apply {
             color = if (isPoseMatched) Color.GREEN else Color.WHITE
             style = Paint.Style.STROKE
-            strokeWidth = 10f // Thick, premium line
+            strokeWidth = 10f 
             strokeJoin = Paint.Join.ROUND
             strokeCap = Paint.Cap.ROUND
             isAntiAlias = true
-            // Adds the beautiful glowing aura
             setShadowLayer(15f, 0f, 0f, if (isPoseMatched) Color.GREEN else Color.WHITE) 
         }
 
         // 2. DRAW THE DYNAMIC HUMAN OUTLINE
         segmentationMask?.let { mask ->
             try {
-                // Extract the simplified edge points using OpenCV
                 val boundaryPoints = ContourHelper.extractSmoothContour(
                     maskBuffer = mask,
                     maskWidth = maskWidth,
@@ -103,18 +95,14 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                     viewHeight = height.toFloat()
                 )
 
-                // Turn those points into a flowing, organic Spline curve
                 val organicSilhouettePath = ContourHelper.createSplinePath(boundaryPoints, tension = 0.25f)
-
-                // Draw the final premium outline
                 canvas.drawPath(organicSilhouettePath, premiumOutlinePaint)
-
             } catch (e: Exception) {
                 // Failsafe
             }
         }
        
-        // 2. DRAW THE TARGET POSE (The solid vector silhouette)
+        // 3. DRAW THE TARGET POSE (The solid vector silhouette guideline)
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
             val centerY = canvas.height / 2f
@@ -127,9 +115,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 )
             }
 
-            val alphaPaint = Paint().apply {
-                alpha = if (isPoseMatched) 255 else 160
-            }
+            val alphaPaint = Paint().apply { alpha = if (isPoseMatched) 255 else 160 }
             val layerId = canvas.saveLayer(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), alphaPaint)
 
             val silhouettePaint = Paint().apply {
@@ -160,7 +146,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
 
                 silhouettePaint.strokeWidth = neckThickness
                 canvas.drawLine(shoulderCenterX, shoulderCenterY, nose.x, nose.y, silhouettePaint)
-
                 silhouettePaint.strokeWidth = 5f
                 canvas.drawCircle(nose.x, nose.y - (headRadius * 0.3f), headRadius, silhouettePaint)
 
@@ -194,7 +179,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
             canvas.restoreToCount(layerId)
         }
 
-        // 3. ORIGINAL MEDIAPIPE DRAWING
+        // 4. ORIGINAL MEDIAPIPE DRAWING (Hidden for live camera, used for Gallery Fragment fallback)
         results?.let { poseLandmarkerResult ->
             if (segmentationMask == null) {
                 for (landmark in poseLandmarkerResult.landmarks()) {
