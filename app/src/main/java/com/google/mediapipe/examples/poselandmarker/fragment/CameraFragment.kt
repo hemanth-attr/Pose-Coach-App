@@ -47,8 +47,7 @@ import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 
 
-class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
-
+class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener, SegmenterHelper.SegmenterListener {
     companion object {
         private const val TAG = "Pose Landmarker"
     }
@@ -59,6 +58,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         get() = _fragmentCameraBinding!!
 
     private lateinit var poseLandmarkerHelper: PoseLandmarkerHelper
+    private lateinit var segmenterHelper: SegmenterHelper
     private val viewModel: MainViewModel by activityViewModels()
     private var preview: Preview? = null
     private var imageAnalyzer: ImageAnalysis? = null
@@ -148,6 +148,11 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                 minPosePresenceConfidence = viewModel.currentMinPosePresenceConfidence,
                 currentDelegate = viewModel.currentDelegate,
                 poseLandmarkerHelperListener = this
+            )
+            // ADD THIS TO INITIALIZE THE SEGMENTER
+            segmenterHelper = SegmenterHelper(
+                context = requireContext(),
+                segmenterListener = this
             )
         }
 
@@ -370,12 +375,20 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         }
     }
 
+  @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     private fun detectPose(imageProxy: ImageProxy) {
-        if(this::poseLandmarkerHelper.isInitialized) {
-            poseLandmarkerHelper.detectLiveStream(
-                imageProxy = imageProxy,
-                isFrontCamera = cameraFacing == CameraSelector.LENS_FACING_FRONT
-            )
+        if(this::poseLandmarkerHelper.isInitialized && this::segmenterHelper.isInitialized) {
+
+            val isFront = cameraFacing == CameraSelector.LENS_FACING_FRONT
+
+            // AI 1: Pose Math
+            poseLandmarkerHelper.detectLiveStream(imageProxy, isFrontCamera = isFront)
+
+            // AI 2: Pixel Segmentation
+            segmenterHelper.segmentLiveStreamFrame(imageProxy, isFrontCamera = isFront)
+
+        } else {
+            imageProxy.close()
         }
     }
 
@@ -492,3 +505,21 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         }
     }
 } // <-- THIS BRACKET CLOSES THE ENTIRE CameraFragment CLASS
+
+// --- SEGMENTER LISTENER ---
+    override fun onSegmentationResults(resultBundle: SegmenterHelper.ResultBundle) {
+        activity?.runOnUiThread {
+            val overlay = _fragmentCameraBinding?.overlay
+            if (overlay != null) {
+                // We grab the confidence mask of the human (Index 0 is background, Index 1 is the person)
+                val maskFloatBuffer = resultBundle.result.confidenceMasks().get().get(1).floatBuffer
+
+                // Pass the mask and dimensions to the overlay
+                overlay.setSegmentationMask(
+                    maskFloatBuffer, 
+                    resultBundle.inputImageWidth, 
+                    resultBundle.inputImageHeight
+                )
+            }
+        }
+    }

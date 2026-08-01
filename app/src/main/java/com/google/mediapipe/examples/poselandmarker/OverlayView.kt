@@ -54,7 +54,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        // 1. DRAW OUR FLESHY SILHOUETTE
+        // 1. DRAW OUR SEAMLESS HUMAN SILHOUETTE
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
             val centerY = canvas.height / 2f
@@ -67,8 +67,16 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 )
             }
 
+            // --- THE MAGIC TRICK ---
+            // We create a temporary layer for transparency so the body parts don't overlap visually!
+            val alphaPaint = Paint().apply {
+                alpha = if (isPoseMatched) 255 else 160 // 160 = semi-transparent
+            }
+            val layerId = canvas.saveLayer(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), alphaPaint)
+
+            // The paint itself is FULLY OPAQUE (Solid White or Solid Green)
             val silhouettePaint = Paint().apply {
-                color = if (isPoseMatched) Color.GREEN else Color.argb(180, 255, 255, 255)
+                color = if (isPoseMatched) Color.GREEN else Color.WHITE
                 style = Paint.Style.FILL_AND_STROKE
                 strokeJoin = Paint.Join.ROUND
                 strokeCap = Paint.Cap.ROUND
@@ -76,22 +84,34 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
             }
 
             if (pose.size >= 33) {
-                val headRadius = drawScale * 0.18f
-                val torsoRoundness = drawScale * 0.1f
-                val bicepThickness = drawScale * 0.12f
-                val forearmThickness = drawScale * 0.09f
-                val thighThickness = drawScale * 0.16f
-                val calfThickness = drawScale * 0.12f
+                // Refined, more natural human proportions
+                val headRadius = drawScale * 0.15f
+                val torsoRoundness = drawScale * 0.08f
+                val bicepThickness = drawScale * 0.10f
+                val forearmThickness = drawScale * 0.07f
+                val thighThickness = drawScale * 0.13f
+                val calfThickness = drawScale * 0.09f
+                val neckThickness = drawScale * 0.08f
 
                 val nose = getPoint(0)
+                val p11 = getPoint(11) // L Shoulder
+                val p12 = getPoint(12) // R Shoulder
+                val p23 = getPoint(23) // L Hip
+                val p24 = getPoint(24) // R Hip
+
+                // Find the center of the shoulders to attach the neck
+                val shoulderCenterX = (p11.x + p12.x) / 2f
+                val shoulderCenterY = (p11.y + p12.y) / 2f
+
+                // Draw the Neck
+                silhouettePaint.strokeWidth = neckThickness
+                canvas.drawLine(shoulderCenterX, shoulderCenterY, nose.x, nose.y, silhouettePaint)
+
+                // Draw the Head (shifted slightly up so the nose is the center of the face)
                 silhouettePaint.strokeWidth = 5f
-                canvas.drawCircle(nose.x, nose.y - (headRadius * 0.5f), headRadius, silhouettePaint)
+                canvas.drawCircle(nose.x, nose.y - (headRadius * 0.3f), headRadius, silhouettePaint)
 
-                val p11 = getPoint(11)
-                val p12 = getPoint(12)
-                val p23 = getPoint(23)
-                val p24 = getPoint(24)
-
+                // Draw the Solid Torso
                 val torsoPath = android.graphics.Path()
                 torsoPath.moveTo(p11.x, p11.y)
                 torsoPath.lineTo(p12.x, p12.y)
@@ -102,6 +122,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 silhouettePaint.strokeWidth = torsoRoundness
                 canvas.drawPath(torsoPath, silhouettePaint)
 
+                // Draw Limbs
                 fun drawLimb(startIdx: Int, endIdx: Int, thickness: Float) {
                     val start = getPoint(startIdx)
                     val end = getPoint(endIdx)
@@ -109,21 +130,21 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                     canvas.drawLine(start.x, start.y, end.x, end.y, silhouettePaint)
                 }
 
+                // Arms
                 drawLimb(11, 13, bicepThickness)
                 drawLimb(13, 15, forearmThickness)
                 drawLimb(12, 14, bicepThickness)
                 drawLimb(14, 16, forearmThickness)
 
+                // Legs
                 drawLimb(23, 25, thighThickness)
                 drawLimb(25, 27, calfThickness)
                 drawLimb(24, 26, thighThickness)
                 drawLimb(26, 28, calfThickness)
-
-                drawLimb(15, 19, forearmThickness * 0.8f)
-                drawLimb(16, 20, forearmThickness * 0.8f)
-                drawLimb(27, 31, calfThickness * 0.8f)
-                drawLimb(28, 32, calfThickness * 0.8f)
             }
+
+            // Fuse the layer to the screen! This removes all the ugly overlapping joints.
+            canvas.restoreToCount(layerId)
         }
 
         // 2. ORIGINAL MEDIAPIPE DRAWING (Needed for GalleryFragment)
