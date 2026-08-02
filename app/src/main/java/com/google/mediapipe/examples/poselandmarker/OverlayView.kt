@@ -30,13 +30,29 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     var targetPose: List<PointF>? = null
     var isPoseMatched = false
 
-    // --- SEGMENTATION AI VARIABLES ---
-    private var segmentationMask: FloatBuffer? = null
+    // --- SEGMENTATION MASK (thread-safe copy) ---
+    private var segmentationMask: FloatArray? = null
     private var maskWidth: Int = 0
     private var maskHeight: Int = 0
 
+    // --- PREMIUM PAINT OBJECTS (reuse to avoid GC) ---
+    private val glowPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+        isAntiAlias = true
+    }
+    private val corePaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+        isAntiAlias = true
+    }
+
     init {
         initPaints()
+        // Required for setShadowLayer glow to render on hardware-accelerated views
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
     fun clear() {
@@ -63,53 +79,75 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         pointPaint.style = Paint.Style.FILL
     }
 
+    /**
+     * Receives mask data and copies it into our own array.
+     * This prevents FloatBuffer lifecycle issues where MediaPipe
+     * recycles the buffer before we read it.
+     */
     fun setSegmentationMask(mask: FloatBuffer, width: Int, height: Int) {
-        segmentationMask = mask
+        val size = width * height
+        mask.rewind()
+        if (segmentationMask == null || segmentationMask!!.size != size) {
+            segmentationMask = FloatArray(size)
+        }
+        mask.get(segmentationMask!!)
         maskWidth = width
         maskHeight = height
-        invalidate()
     }
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        // 1. CONFIGURE THE PREMIUM GLOWING STROKE (Huawei Style)
-        val premiumOutlinePaint = Paint().apply {
-            color = if (isPoseMatched) Color.GREEN else Color.WHITE
-            style = Paint.Style.STROKE
-            strokeWidth = 10f 
-            strokeJoin = Paint.Join.ROUND
-            strokeCap = Paint.Cap.ROUND
-            isAntiAlias = true
-            setShadowLayer(15f, 0f, 0f, if (isPoseMatched) Color.GREEN else Color.WHITE) 
-        }
+        val accentColor = if (isPoseMatched) Color.GREEN else Color.WHITE
 
-        // 2. DRAW THE DYNAMIC HUMAN OUTLINE
-        segmentationMask?.let { mask ->
+        // ==========================================
+        // 1. DRAW THE DYNAMIC HUMAN SILHOUETTE OUTLINE
+        // ==========================================
+        segmentationMask?.let { maskData ->
             try {
+                // Wrap our owned FloatArray into a temporary FloatBuffer for ContourHelper
+                val tempBuffer = FloatBuffer.wrap(maskData)
+
                 val boundaryPoints = ContourHelper.extractSmoothContour(
-                    maskBuffer = mask,
+                    maskBuffer = tempBuffer,
                     maskWidth = maskWidth,
                     maskHeight = maskHeight,
                     viewWidth = width.toFloat(),
                     viewHeight = height.toFloat()
                 )
 
-                val organicSilhouettePath = ContourHelper.createSplinePath(boundaryPoints, tension = 0.25f)
-                canvas.drawPath(organicSilhouettePath, premiumOutlinePaint)
+                if (boundaryPoints.size >= 3) {
+                    val silhouettePath = ContourHelper.createSplinePath(boundaryPoints, tension = 0.25f)
+
+                    // OUTER GLOW STROKE (wider, semi-transparent)
+                    glowPaint.color = accentColor
+                    glowPaint.strokeWidth = 22f
+                    glowPaint.alpha = 60
+                    glowPaint.setShadowLayer(20f, 0f, 0f, accentColor)
+                    canvas.drawPath(silhouettePath, glowPaint)
+
+                    // CORE STROKE (narrower, fully opaque)
+                    corePaint.color = accentColor
+                    corePaint.strokeWidth = 6f
+                    corePaint.alpha = 255
+                    corePaint.setShadowLayer(8f, 0f, 0f, accentColor)
+                    canvas.drawPath(silhouettePath, corePaint)
+                }
             } catch (e: Exception) {
                 // Failsafe
             }
         }
-       
-        // 3. DRAW THE TARGET POSE (The solid vector silhouette guideline)
+
+        // ==========================================
+        // 2. DRAW THE TARGET POSE GUIDELINE
+        // ==========================================
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
             val centerY = canvas.height / 2f
             val drawScale = canvas.height / 3.5f
 
-            fun getPoint(idx: Int): android.graphics.PointF {
-                return android.graphics.PointF(
+            fun getPoint(idx: Int): PointF {
+                return PointF(
                     centerX + (pose[idx].x * drawScale),
                     centerY + (pose[idx].y * drawScale)
                 )
@@ -179,7 +217,9 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
             canvas.restoreToCount(layerId)
         }
 
-        // 4. ORIGINAL MEDIAPIPE DRAWING (Hidden for live camera, used for Gallery Fragment fallback)
+        // ==========================================
+        // 3. FALLBACK: Original MediaPipe skeleton (Gallery mode only)
+        // ==========================================
         results?.let { poseLandmarkerResult ->
             if (segmentationMask == null) {
                 for (landmark in poseLandmarkerResult.landmarks()) {
