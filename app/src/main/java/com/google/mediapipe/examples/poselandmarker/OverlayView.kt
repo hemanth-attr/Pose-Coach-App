@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PointF
 import android.util.AttributeSet
 import android.view.View
@@ -23,6 +24,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     private var linePaint = Paint()
 
     private var scaleFactor: Float = 1f
+    private var postTranslateX: Float = 0f
+    private var postTranslateY: Float = 0f
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
 
@@ -42,12 +45,37 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
     }
+    
     private val corePaint = Paint().apply {
         style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
     }
+
+    // --- TARGET POSE (NEON WIREFRAME) PAINTS ---
+    private val targetGlowPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = 14f
+        isAntiAlias = true
+    }
+    
+    private val targetCorePaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = 4f
+        color = Color.WHITE
+        isAntiAlias = true
+    }
+    
+    private val targetJointGlowPaint = Paint(targetGlowPaint).apply { style = Paint.Style.FILL }
+    private val targetJointCorePaint = Paint(targetCorePaint).apply { style = Paint.Style.FILL }
+    
+    // Reusable path for target pose to reduce allocations
+    private val targetPosePath = Path()
 
     init {
         initPaints()
@@ -112,8 +140,11 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                     maskBuffer = tempBuffer,
                     maskWidth = maskWidth,
                     maskHeight = maskHeight,
-                    viewWidth = width.toFloat(),
-                    viewHeight = height.toFloat()
+                    imageWidth = imageWidth,
+                    imageHeight = imageHeight,
+                    scaleFactor = scaleFactor,
+                    postTranslateX = postTranslateX,
+                    postTranslateY = postTranslateY
                 )
 
                 if (boundaryPoints.size >= 3) {
@@ -139,7 +170,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         }
 
         // ==========================================
-        // 2. DRAW THE TARGET POSE GUIDELINE
+        // 2. DRAW THE TARGET POSE GUIDELINE (Neon Wireframe)
         // ==========================================
         targetPose?.let { pose ->
             val centerX = canvas.width / 2f
@@ -153,68 +184,46 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 )
             }
 
-            val alphaPaint = Paint().apply { alpha = if (isPoseMatched) 255 else 160 }
-            val layerId = canvas.saveLayer(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), alphaPaint)
+            // A nice cyan color when unmatched, glowing green when matched
+            val targetColor = if (isPoseMatched) Color.GREEN else Color.parseColor("#00E5FF")
+            
+            targetGlowPaint.color = targetColor
+            targetGlowPaint.alpha = 150
+            targetGlowPaint.setShadowLayer(16f, 0f, 0f, targetColor)
+            
+            targetJointGlowPaint.color = targetColor
+            targetJointGlowPaint.alpha = 150
+            targetJointGlowPaint.setShadowLayer(12f, 0f, 0f, targetColor)
 
-            val silhouettePaint = Paint().apply {
-                color = if (isPoseMatched) Color.GREEN else Color.WHITE
-                style = Paint.Style.FILL_AND_STROKE
-                strokeJoin = Paint.Join.ROUND
-                strokeCap = Paint.Cap.ROUND
-                isAntiAlias = true
+            targetPosePath.reset()
+
+            // Draw standard MediaPipe skeleton connections
+            PoseLandmarker.POSE_LANDMARKS.forEach { connection ->
+                val startIdx = connection!!.start()
+                val endIdx = connection.end()
+                
+                // Optional: Skip face landmarks (0-10) for a cleaner "body only" wireframe
+                // if (startIdx > 10 && endIdx > 10) {
+                val start = getPoint(startIdx)
+                val end = getPoint(endIdx)
+                targetPosePath.moveTo(start.x, start.y)
+                targetPosePath.lineTo(end.x, end.y)
+                // }
             }
-
-            if (pose.size >= 33) {
-                val headRadius = drawScale * 0.15f
-                val torsoRoundness = drawScale * 0.08f
-                val bicepThickness = drawScale * 0.10f
-                val forearmThickness = drawScale * 0.07f
-                val thighThickness = drawScale * 0.13f
-                val calfThickness = drawScale * 0.09f
-                val neckThickness = drawScale * 0.08f
-
-                val nose = getPoint(0)
-                val p11 = getPoint(11) 
-                val p12 = getPoint(12) 
-                val p23 = getPoint(23) 
-                val p24 = getPoint(24) 
-
-                val shoulderCenterX = (p11.x + p12.x) / 2f
-                val shoulderCenterY = (p11.y + p12.y) / 2f
-
-                silhouettePaint.strokeWidth = neckThickness
-                canvas.drawLine(shoulderCenterX, shoulderCenterY, nose.x, nose.y, silhouettePaint)
-                silhouettePaint.strokeWidth = 5f
-                canvas.drawCircle(nose.x, nose.y - (headRadius * 0.3f), headRadius, silhouettePaint)
-
-                val torsoPath = android.graphics.Path()
-                torsoPath.moveTo(p11.x, p11.y)
-                torsoPath.lineTo(p12.x, p12.y)
-                torsoPath.lineTo(p24.x, p24.y)
-                torsoPath.lineTo(p23.x, p23.y)
-                torsoPath.close()
-
-                silhouettePaint.strokeWidth = torsoRoundness
-                canvas.drawPath(torsoPath, silhouettePaint)
-
-                fun drawLimb(startIdx: Int, endIdx: Int, thickness: Float) {
-                    val start = getPoint(startIdx)
-                    val end = getPoint(endIdx)
-                    silhouettePaint.strokeWidth = thickness
-                    canvas.drawLine(start.x, start.y, end.x, end.y, silhouettePaint)
-                }
-
-                drawLimb(11, 13, bicepThickness)
-                drawLimb(13, 15, forearmThickness)
-                drawLimb(12, 14, bicepThickness)
-                drawLimb(14, 16, forearmThickness)
-                drawLimb(23, 25, thighThickness)
-                drawLimb(25, 27, calfThickness)
-                drawLimb(24, 26, thighThickness)
-                drawLimb(26, 28, calfThickness)
+            
+            // Draw the paths (bones)
+            canvas.drawPath(targetPosePath, targetGlowPaint)
+            canvas.drawPath(targetPosePath, targetCorePaint)
+            
+            // Draw the joints (nodes)
+            for (i in pose.indices) {
+                // Optional: Skip face landmarks for a cleaner aesthetic
+                // if (i > 10) {
+                val p = getPoint(i)
+                canvas.drawCircle(p.x, p.y, 8f, targetJointGlowPaint)
+                canvas.drawCircle(p.x, p.y, 4f, targetJointCorePaint)
+                // }
             }
-
-            canvas.restoreToCount(layerId)
         }
 
         // ==========================================
@@ -224,21 +233,21 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
             if (segmentationMask == null) {
                 for (landmark in poseLandmarkerResult.landmarks()) {
                     for (normalizedLandmark in landmark) {
-                        canvas.drawPoint(
-                            normalizedLandmark.x() * imageWidth * scaleFactor,
-                            normalizedLandmark.y() * imageHeight * scaleFactor,
-                            pointPaint
-                        )
+                        val viewX = normalizedLandmark.x() * imageWidth * scaleFactor + postTranslateX
+                        val viewY = normalizedLandmark.y() * imageHeight * scaleFactor + postTranslateY
+                        canvas.drawPoint(viewX, viewY, pointPaint)
                     }
 
                     PoseLandmarker.POSE_LANDMARKS.forEach {
-                        canvas.drawLine(
-                            poseLandmarkerResult.landmarks().get(0).get(it!!.start()).x() * imageWidth * scaleFactor,
-                            poseLandmarkerResult.landmarks().get(0).get(it.start()).y() * imageHeight * scaleFactor,
-                            poseLandmarkerResult.landmarks().get(0).get(it.end()).x() * imageWidth * scaleFactor,
-                            poseLandmarkerResult.landmarks().get(0).get(it.end()).y() * imageHeight * scaleFactor,
-                            linePaint
-                        )
+                        val startL = poseLandmarkerResult.landmarks().get(0).get(it!!.start())
+                        val endL = poseLandmarkerResult.landmarks().get(0).get(it.end())
+                        
+                        val startX = startL.x() * imageWidth * scaleFactor + postTranslateX
+                        val startY = startL.y() * imageHeight * scaleFactor + postTranslateY
+                        val endX = endL.x() * imageWidth * scaleFactor + postTranslateX
+                        val endY = endL.y() * imageHeight * scaleFactor + postTranslateY
+                        
+                        canvas.drawLine(startX, startY, endX, endY, linePaint)
                     }
                 }
             }
@@ -255,6 +264,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         this.imageHeight = imageHeight
         this.imageWidth = imageWidth
 
+        // Fix Bug 1: Calculate CENTER_CROP scaling properly
         scaleFactor = when (runningMode) {
             RunningMode.IMAGE,
             RunningMode.VIDEO -> {
@@ -264,6 +274,14 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 max(width * 1f / imageWidth, height * 1f / imageHeight)
             }
         }
+        
+        val scaledWidth = imageWidth * scaleFactor
+        val scaledHeight = imageHeight * scaleFactor
+        
+        // This translation perfectly centers the cropped camera image inside the view
+        postTranslateX = (width - scaledWidth) / 2f
+        postTranslateY = (height - scaledHeight) / 2f
+        
         invalidate()
     }
 

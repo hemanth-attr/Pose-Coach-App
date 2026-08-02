@@ -78,8 +78,11 @@ object ContourHelper {
         maskBuffer: FloatBuffer,
         maskWidth: Int,
         maskHeight: Int,
-        viewWidth: Float,
-        viewHeight: Float
+        imageWidth: Int,
+        imageHeight: Int,
+        scaleFactor: Float,
+        postTranslateX: Float,
+        postTranslateY: Float
     ): List<PointF> {
         val size = maskWidth * maskHeight
         val floatArray = FloatArray(size)
@@ -146,12 +149,18 @@ object ContourHelper {
             val epsilon = 0.012 * Imgproc.arcLength(contour2f, true)
             Imgproc.approxPolyDP(contour2f, approxCurve, epsilon, true)
 
-            // 10. Scale from mask coordinates to view coordinates
-            val scaleX = viewWidth / maskWidth.toFloat()
-            val scaleY = viewHeight / maskHeight.toFloat()
+            // 10. Scale from mask coordinates -> image coordinates -> view coordinates
+            // This safely calculates exact pixels while preserving the CENTER_CROP layout
+            val maskToImageScaleX = imageWidth.toFloat() / maskWidth.toFloat()
+            val maskToImageScaleY = imageHeight.toFloat() / maskHeight.toFloat()
+            
+            val finalScaleX = maskToImageScaleX * scaleFactor
+            val finalScaleY = maskToImageScaleY * scaleFactor
 
             for (point in approxCurve.toArray()) {
-                rawPoints.add(PointF(point.x.toFloat() * scaleX, point.y.toFloat() * scaleY))
+                val viewX = point.x.toFloat() * finalScaleX + postTranslateX
+                val viewY = point.y.toFloat() * finalScaleY + postTranslateY
+                rawPoints.add(PointF(viewX, viewY))
             }
 
             contour2f.release()
