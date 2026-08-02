@@ -441,9 +441,6 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         activity?.runOnUiThread {
             val overlay = _fragmentCameraBinding?.overlay
             if (overlay != null) {
-                // Pass the CURRENT target pose to the screen so it draws it
-                overlay.targetPose = currentTargetPose
-                
                 try {
                     if (results.isNotEmpty()) {
                         val firstResult = results.first()
@@ -485,12 +482,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             if (validJointsCount > 0) {
                                 val averageError = totalError / validJointsCount
                                 // If error is low, the pose matches!
-                                overlay.isPoseMatched = (averageError < 0.6) // Adjust 0.6 to make it harder or easier
-                            } else {
-                                overlay.isPoseMatched = false
                             }
                         } else {
-                            overlay.isPoseMatched = false
                             overlay.clearLivePose()
                         }
                         
@@ -503,12 +496,10 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                         )
                         
                     } else {
-                        overlay.isPoseMatched = false
                         overlay.clearLivePose()
                     }
                 } catch (e: Exception) {
-                    // CATCH-ALL CRASH FIX: If the math fails, just mark the pose as false instead of closing the app!
-                    overlay.isPoseMatched = false
+                    // Failsafe
                 }
                 
                 overlay.invalidate()
