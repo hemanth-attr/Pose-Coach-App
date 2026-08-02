@@ -4,17 +4,26 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.util.AttributeSet
 import android.view.View
+import com.google.mediapipe.examples.poselandmarker.renderer.HuaweiPoseRenderer
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Overlay view that renders the Huawei AI Pose-style premium outline
+ * on top of the camera preview.
+ *
+ * This view is a thin wrapper that delegates all rendering logic to
+ * [HuaweiPoseRenderer]. It handles coordinate system conversion
+ * (MediaPipe normalized coords → view pixel coords) and lifecycle.
+ */
 class OverlayView(context: Context?, attrs: AttributeSet?) :
     View(context, attrs) {
 
+    // ── Pose detection results ──
     private var results: PoseLandmarkerResult? = null
     private var scaleFactor: Float = 1f
     private var postTranslateX: Float = 0f
@@ -22,63 +31,67 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
 
-    private val outlinePaint = Paint().apply {
-        style = Paint.Style.STROKE
-        strokeJoin = Paint.Join.ROUND
-        strokeCap = Paint.Cap.ROUND
-        isAntiAlias = true
-        color = Color.WHITE
-        strokeWidth = 8f
-        // Optional subtle dark shadow so the white line is visible on bright backgrounds
-        setShadowLayer(4f, 0f, 0f, Color.BLACK)
-    }
+    // ── Premium Renderer ──
+    private val renderer = HuaweiPoseRenderer()
 
     init {
-        // Required for setShadowLayer glow to render on hardware-accelerated views
+        // Required for setShadowLayer glow to render properly
         setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
+    /**
+     * Clear all results and reset the renderer's temporal state.
+     * Called when switching modes or stopping the camera.
+     */
     fun clear() {
         results = null
-        ProceduralBodyBuilder.reset()
+        renderer.reset()
         invalidate()
     }
 
+    /**
+     * Clear live pose results without fully resetting the renderer.
+     * Called when tracking is temporarily lost.
+     */
     fun clearLivePose() {
         results = null
-        ProceduralBodyBuilder.reset()
+        renderer.reset()
         invalidate()
     }
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        // ==========================================
-        // DRAW THE PROCEDURAL HUMAN BODY OUTLINE
-        // ==========================================
+        // ══════════════════════════════════════════
+        // RENDER THE HUAWEI AI POSE PREMIUM OUTLINE
+        // ══════════════════════════════════════════
         results?.let { poseLandmarkerResult ->
             if (poseLandmarkerResult.landmarks().isNotEmpty()) {
                 val landmarks = poseLandmarkerResult.landmarks()[0]
-                
+
                 try {
-                    val bodyPath = ProceduralBodyBuilder.buildBodyPath(
+                    renderer.render(
+                        canvas = canvas,
                         landmarks = landmarks,
                         imageWidth = imageWidth,
                         imageHeight = imageHeight,
                         scaleFactor = scaleFactor,
                         postTranslateX = postTranslateX,
-                        postTranslateY = postTranslateY
+                        postTranslateY = postTranslateY,
+                        viewWidth = width,
+                        viewHeight = height
                     )
-                    
-                    // Single continuous white outline around the procedural body
-                    canvas.drawPath(bodyPath, outlinePaint)
                 } catch (e: Exception) {
-                    // Failsafe
+                    // Failsafe — never crash the UI thread
                 }
             }
         }
     }
 
+    /**
+     * Update results and coordinate mapping from the detection pipeline.
+     * Called from CameraFragment.onResults() on the UI thread.
+     */
     fun setResults(
         poseLandmarkerResults: PoseLandmarkerResult,
         imageHeight: Int,
@@ -89,7 +102,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         this.imageHeight = imageHeight
         this.imageWidth = imageWidth
 
-        // Calculate CENTER_CROP scaling properly
+        // Calculate CENTER_CROP scaling
         scaleFactor = when (runningMode) {
             RunningMode.IMAGE,
             RunningMode.VIDEO -> {
@@ -99,14 +112,19 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 max(width * 1f / imageWidth, height * 1f / imageHeight)
             }
         }
-        
+
         val scaledWidth = imageWidth * scaleFactor
         val scaledHeight = imageHeight * scaleFactor
-        
-        // This translation perfectly centers the cropped camera image inside the view
+
+        // Center the cropped image inside the view
         postTranslateX = (width - scaledWidth) / 2f
         postTranslateY = (height - scaledHeight) / 2f
-        
+
         invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        renderer.release()
     }
 }
