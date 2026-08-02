@@ -5,31 +5,23 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PointF
 import android.util.AttributeSet
 import android.view.View
-import androidx.core.content.ContextCompat
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
-import java.nio.FloatBuffer
 import kotlin.math.max
 import kotlin.math.min
 
 class OverlayView(context: Context?, attrs: AttributeSet?) :
     View(context, attrs) {
 
+    private var results: PoseLandmarkerResult? = null
     private var scaleFactor: Float = 1f
     private var postTranslateX: Float = 0f
     private var postTranslateY: Float = 0f
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
 
-    // --- SEGMENTATION MASK (thread-safe copy) ---
-    private var segmentationMask: FloatArray? = null
-    private var maskWidth: Int = 0
-    private var maskHeight: Int = 0
-
-    // --- PREMIUM PAINT OBJECTS (reuse to avoid GC) ---
     private val outlinePaint = Paint().apply {
         style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND
@@ -47,60 +39,42 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     }
 
     fun clear() {
-        segmentationMask = null
+        results = null
+        ProceduralBodyBuilder.reset()
         invalidate()
     }
 
     fun clearLivePose() {
+        results = null
+        ProceduralBodyBuilder.reset()
         invalidate()
-    }
-
-    /**
-     * Receives mask data and copies it into our own array.
-     * This prevents FloatBuffer lifecycle issues where MediaPipe
-     * recycles the buffer before we read it.
-     */
-    fun setSegmentationMask(mask: FloatBuffer, width: Int, height: Int) {
-        val size = width * height
-        mask.rewind()
-        if (segmentationMask == null || segmentationMask!!.size != size) {
-            segmentationMask = FloatArray(size)
-        }
-        mask.get(segmentationMask!!)
-        maskWidth = width
-        maskHeight = height
     }
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
         // ==========================================
-        // 1. DRAW THE DYNAMIC HUMAN SILHOUETTE OUTLINE
+        // DRAW THE PROCEDURAL HUMAN BODY OUTLINE
         // ==========================================
-        segmentationMask?.let { maskData ->
-            try {
-                // Wrap our owned FloatArray into a temporary FloatBuffer for ContourHelper
-                val tempBuffer = FloatBuffer.wrap(maskData)
-
-                val boundaryPoints = ContourHelper.extractSmoothContour(
-                    maskBuffer = tempBuffer,
-                    maskWidth = maskWidth,
-                    maskHeight = maskHeight,
-                    imageWidth = imageWidth,
-                    imageHeight = imageHeight,
-                    scaleFactor = scaleFactor,
-                    postTranslateX = postTranslateX,
-                    postTranslateY = postTranslateY
-                )
-
-                if (boundaryPoints.size >= 3) {
-                    val silhouettePath = ContourHelper.createSplinePath(boundaryPoints, tension = 0.25f)
+        results?.let { poseLandmarkerResult ->
+            if (poseLandmarkerResult.landmarks().isNotEmpty()) {
+                val landmarks = poseLandmarkerResult.landmarks()[0]
+                
+                try {
+                    val bodyPath = ProceduralBodyBuilder.buildBodyPath(
+                        landmarks = landmarks,
+                        imageWidth = imageWidth,
+                        imageHeight = imageHeight,
+                        scaleFactor = scaleFactor,
+                        postTranslateX = postTranslateX,
+                        postTranslateY = postTranslateY
+                    )
                     
-                    // Single continuous white outline around the person
-                    canvas.drawPath(silhouettePath, outlinePaint)
+                    // Single continuous white outline around the procedural body
+                    canvas.drawPath(bodyPath, outlinePaint)
+                } catch (e: Exception) {
+                    // Failsafe
                 }
-            } catch (e: Exception) {
-                // Failsafe
             }
         }
     }
@@ -111,6 +85,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         imageWidth: Int,
         runningMode: RunningMode
     ) {
+        this.results = poseLandmarkerResults
         this.imageHeight = imageHeight
         this.imageWidth = imageWidth
 
