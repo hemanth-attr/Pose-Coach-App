@@ -448,10 +448,10 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                     if (results.isNotEmpty()) {
                         val firstResult = results.first()
                         
-                        // Extract Native Segmentation Mask
-                        firstResult.segmentationMasks()?.let { masks ->
-                            if (masks.isNotEmpty()) {
-                                val mask = masks.first()
+                        // Extract Native Segmentation Mask securely
+                        firstResult.segmentationMasks()?.let { optionalMasks ->
+                            if (optionalMasks.isPresent && optionalMasks.get().isNotEmpty()) {
+                                val mask = optionalMasks.get().first()
                                 val byteBuffer = com.google.mediapipe.framework.image.ByteBufferExtractor.extract(mask)
                                 val maskFloatBuffer = byteBuffer.asFloatBuffer()
                                 overlay.setSegmentationMask(maskFloatBuffer, mask.width, mask.height)
