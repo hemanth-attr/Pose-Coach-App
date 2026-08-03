@@ -6,7 +6,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
 import android.os.SystemClock
-import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 
 /**
  * Huawei AI Pose Premium Renderer — the master orchestrator.
@@ -57,6 +56,12 @@ class HuaweiPoseRenderer {
         setShadowLayer(3f, 0f, 0f, Color.argb(120, 0, 0, 0))
     }
 
+    private val highlightPaint = Paint().apply {
+        style = Paint.Style.FILL
+        isAntiAlias = true
+        color = Color.parseColor("#80FF3B30") // Semi-transparent bright red
+    }
+
     // ── Cached state ──
     private var lastContour: List<PointF>? = null
 
@@ -64,7 +69,8 @@ class HuaweiPoseRenderer {
      * Render the Huawei-style pose outline onto the given Canvas.
      *
      * @param canvas          Target canvas to draw on
-     * @param landmarks       Raw MediaPipe pose landmarks (normalized 0–1)
+     * @param landmarks       Transformed target pose landmarks (normalized 0-1)
+     * @param incorrectLimbs  Set of incorrect limbs to highlight
      * @param imageWidth      Width of the source camera image
      * @param imageHeight     Height of the source camera image
      * @param scaleFactor     Scale factor from image → view coordinates
@@ -75,7 +81,8 @@ class HuaweiPoseRenderer {
      */
     fun render(
         canvas: Canvas,
-        landmarks: List<NormalizedLandmark>,
+        landmarks: List<PointF>,
+        incorrectLimbs: Set<Limb>,
         imageWidth: Int,
         imageHeight: Int,
         scaleFactor: Float,
@@ -95,8 +102,8 @@ class HuaweiPoseRenderer {
         val rawPoints = Array(landmarks.size.coerceAtMost(33)) { i ->
             val lm = landmarks[i]
             PointF(
-                lm.x() * imageWidth * scaleFactor + postTranslateX,
-                lm.y() * imageHeight * scaleFactor + postTranslateY
+                lm.x * imageWidth * scaleFactor + postTranslateX,
+                lm.y * imageHeight * scaleFactor + postTranslateY
             )
         }
 
@@ -108,12 +115,12 @@ class HuaweiPoseRenderer {
         // ══════════════════════════════════════════
         // STAGE 3: Generate procedural body
         // ══════════════════════════════════════════
-        val bodyPath = ProceduralBodyGenerator.generate(smoothedPoints)
+        val bodyModel = ProceduralBodyGenerator.generate(smoothedPoints, incorrectLimbs)
 
         // ══════════════════════════════════════════
         // STAGE 4: Extract contour from silhouette
         // ══════════════════════════════════════════
-        var contourPoints = contourExtractor.extract(bodyPath, viewWidth, viewHeight)
+        var contourPoints = contourExtractor.extract(bodyModel.mainPath, viewWidth, viewHeight)
 
         if (contourPoints.size < 3) {
             // Contour extraction failed — use cached contour if available
@@ -136,9 +143,14 @@ class HuaweiPoseRenderer {
         )
 
         // ══════════════════════════════════════════
-        // STAGE 7: Render the premium outline
+        // STAGE 7: Render the premium outline & highlights
         // ══════════════════════════════════════════
         canvas.drawPath(smoothOutline, outlinePaint)
+        
+        // Draw highlights for incorrect limbs over the outline
+        for (path in bodyModel.incorrectPaths) {
+            canvas.drawPath(path, highlightPaint)
+        }
     }
 
     /**

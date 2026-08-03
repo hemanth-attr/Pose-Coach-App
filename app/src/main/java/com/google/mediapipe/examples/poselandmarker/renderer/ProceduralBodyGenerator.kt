@@ -85,10 +85,12 @@ object ProceduralBodyGenerator {
      * Generate the complete body silhouette from smoothed landmarks.
      *
      * @param pts Array of 33 smoothed landmark positions in view coordinates
-     * @return Single filled Path representing the complete human body silhouette
+     * @param incorrectLimbs Set of limbs that are incorrectly positioned
+     * @return BodyRenderModel containing the main silhouette and incorrect limb paths
      */
-    fun generate(pts: Array<PointF>): Path {
+    fun generate(pts: Array<PointF>, incorrectLimbs: Set<Limb> = emptySet()): BodyRenderModel {
         val body = Path()
+        val incorrectPaths = mutableListOf<Path>()
 
         // ── Measure base proportions ──
         val shoulderWidth = Geometry.distance(pts[LandmarkIndex.LEFT_SHOULDER], pts[LandmarkIndex.RIGHT_SHOULDER])
@@ -165,13 +167,14 @@ object ProceduralBodyGenerator {
         val forearmWidth = baseWidth * AnatomyRatios.FOREARM_WIDTH
         val handRadius = baseWidth * AnatomyRatios.HAND_RADIUS
 
+        val leftArmPath = Path()
         // Left upper arm (shoulder → elbow) — tapered
-        body.op(
+        leftArmPath.op(
             taperedCapsule(pts[LandmarkIndex.LEFT_SHOULDER], pts[LandmarkIndex.LEFT_ELBOW], upperArmWidth, forearmWidth),
             Path.Op.UNION
         )
         // Left forearm (elbow → wrist) — tapered
-        body.op(
+        leftArmPath.op(
             taperedCapsule(pts[LandmarkIndex.LEFT_ELBOW], pts[LandmarkIndex.LEFT_WRIST], forearmWidth, forearmWidth * 0.85f),
             Path.Op.UNION
         )
@@ -180,18 +183,22 @@ object ProceduralBodyGenerator {
         val leftHandPath = Path().apply {
             addCircle(leftHandCenter.x, leftHandCenter.y, handRadius, Path.Direction.CW)
         }
-        body.op(leftHandPath, Path.Op.UNION)
+        leftArmPath.op(leftHandPath, Path.Op.UNION)
         // Connect hand to wrist
-        body.op(capsule(pts[LandmarkIndex.LEFT_WRIST], leftHandCenter, forearmWidth * 0.7f), Path.Op.UNION)
+        leftArmPath.op(capsule(pts[LandmarkIndex.LEFT_WRIST], leftHandCenter, forearmWidth * 0.7f), Path.Op.UNION)
+        
+        body.op(leftArmPath, Path.Op.UNION)
+        if (incorrectLimbs.contains(Limb.LEFT_ARM)) incorrectPaths.add(leftArmPath)
 
         // ══════════════════════════════════════════
         // RIGHT ARM — Tapered capsules with hand
         // ══════════════════════════════════════════
-        body.op(
+        val rightArmPath = Path()
+        rightArmPath.op(
             taperedCapsule(pts[LandmarkIndex.RIGHT_SHOULDER], pts[LandmarkIndex.RIGHT_ELBOW], upperArmWidth, forearmWidth),
             Path.Op.UNION
         )
-        body.op(
+        rightArmPath.op(
             taperedCapsule(pts[LandmarkIndex.RIGHT_ELBOW], pts[LandmarkIndex.RIGHT_WRIST], forearmWidth, forearmWidth * 0.85f),
             Path.Op.UNION
         )
@@ -199,8 +206,11 @@ object ProceduralBodyGenerator {
         val rightHandPath = Path().apply {
             addCircle(rightHandCenter.x, rightHandCenter.y, handRadius, Path.Direction.CW)
         }
-        body.op(rightHandPath, Path.Op.UNION)
-        body.op(capsule(pts[LandmarkIndex.RIGHT_WRIST], rightHandCenter, forearmWidth * 0.7f), Path.Op.UNION)
+        rightArmPath.op(rightHandPath, Path.Op.UNION)
+        rightArmPath.op(capsule(pts[LandmarkIndex.RIGHT_WRIST], rightHandCenter, forearmWidth * 0.7f), Path.Op.UNION)
+
+        body.op(rightArmPath, Path.Op.UNION)
+        if (incorrectLimbs.contains(Limb.RIGHT_ARM)) incorrectPaths.add(rightArmPath)
 
         // ══════════════════════════════════════════
         // LEFT LEG — Tapered capsules with foot
@@ -209,47 +219,55 @@ object ProceduralBodyGenerator {
         val calfWidth = baseWidth * AnatomyRatios.CALF_WIDTH
         val footWidth = baseWidth * AnatomyRatios.FOOT_WIDTH
 
+        val leftLegPath = Path()
         // Left thigh (hip → knee)
-        body.op(
+        leftLegPath.op(
             taperedCapsule(pts[LandmarkIndex.LEFT_HIP], pts[LandmarkIndex.LEFT_KNEE], thighWidth, calfWidth),
             Path.Op.UNION
         )
         // Left calf (knee → ankle)
-        body.op(
+        leftLegPath.op(
             taperedCapsule(pts[LandmarkIndex.LEFT_KNEE], pts[LandmarkIndex.LEFT_ANKLE], calfWidth, calfWidth * 0.8f),
             Path.Op.UNION
         )
         // Left foot — oriented capsule from heel to toe
-        body.op(
+        leftLegPath.op(
             capsule(pts[LandmarkIndex.LEFT_HEEL], pts[LandmarkIndex.LEFT_FOOT_INDEX], footWidth),
             Path.Op.UNION
         )
         // Connect ankle to foot
-        body.op(
+        leftLegPath.op(
             capsule(pts[LandmarkIndex.LEFT_ANKLE], pts[LandmarkIndex.LEFT_HEEL], calfWidth * 0.7f),
             Path.Op.UNION
         )
 
+        body.op(leftLegPath, Path.Op.UNION)
+        if (incorrectLimbs.contains(Limb.LEFT_LEG)) incorrectPaths.add(leftLegPath)
+
         // ══════════════════════════════════════════
         // RIGHT LEG — Tapered capsules with foot
         // ══════════════════════════════════════════
-        body.op(
+        val rightLegPath = Path()
+        rightLegPath.op(
             taperedCapsule(pts[LandmarkIndex.RIGHT_HIP], pts[LandmarkIndex.RIGHT_KNEE], thighWidth, calfWidth),
             Path.Op.UNION
         )
-        body.op(
+        rightLegPath.op(
             taperedCapsule(pts[LandmarkIndex.RIGHT_KNEE], pts[LandmarkIndex.RIGHT_ANKLE], calfWidth, calfWidth * 0.8f),
             Path.Op.UNION
         )
-        body.op(
+        rightLegPath.op(
             capsule(pts[LandmarkIndex.RIGHT_HEEL], pts[LandmarkIndex.RIGHT_FOOT_INDEX], footWidth),
             Path.Op.UNION
         )
-        body.op(
+        rightLegPath.op(
             capsule(pts[LandmarkIndex.RIGHT_ANKLE], pts[LandmarkIndex.RIGHT_HEEL], calfWidth * 0.7f),
             Path.Op.UNION
         )
 
-        return body
+        body.op(rightLegPath, Path.Op.UNION)
+        if (incorrectLimbs.contains(Limb.RIGHT_LEG)) incorrectPaths.add(rightLegPath)
+
+        return BodyRenderModel(body, incorrectPaths)
     }
 }

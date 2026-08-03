@@ -451,42 +451,29 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                         if (firstResult.landmarks().isNotEmpty() && currentTargetPose != null) {
                             val liveLandmarks = firstResult.landmarks()[0]
                             
-                            // Normalize the live camera body!
-                            val normalizedLive = normalizeLandmarks(liveLandmarks)
+                            // 1. Transform Target Pose to fit the live user
+                            val transformedTarget = com.google.mediapipe.examples.poselandmarker.renderer.TargetPoseTransformer.transform(
+                                currentTargetPose!!,
+                                liveLandmarks
+                            )
                             
-                            // Compare Live Body vs Target Body
-                            var totalError = 0.0
-                            val jointsToCheck = listOf(11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
-                            var validJointsCount = 0
+                            // 2. Analyze angles to find incorrect limbs
+                            val incorrectLimbs = com.google.mediapipe.examples.poselandmarker.renderer.PoseAngleAnalyzer.analyze(
+                                liveLandmarks,
+                                transformedTarget
+                            )
                             
-                            for (i in jointsToCheck) {
-                                // CRASH FIX: Ensure both lists actually contain this joint index before doing math
-                                if (i < currentTargetPose!!.size && i < normalizedLive.size) {
-                                    val distance = Math.sqrt(
-                                        Math.pow((currentTargetPose!![i].x - normalizedLive[i].x).toDouble(), 2.0) + 
-                                        Math.pow((currentTargetPose!![i].y - normalizedLive[i].y).toDouble(), 2.0)
-                                    )
-                                    totalError += distance
-                                    validJointsCount++
-                                }
-                            }
-                            
-                            // Prevent division by zero if no joints were valid
-                            if (validJointsCount > 0) {
-                                val averageError = totalError / validJointsCount
-                                // If error is low, the pose matches!
-                            }
+                            // 3. Send results to overlay
+                            overlay.setCoachResults(
+                                transformedTarget,
+                                incorrectLimbs,
+                                resultBundle.inputImageHeight,
+                                resultBundle.inputImageWidth,
+                                com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM
+                            )
                         } else {
                             overlay.clearLivePose()
                         }
-                        
-                        // Send the live skeleton fallback data to the overlay
-                        overlay.setResults(
-                            firstResult,
-                            resultBundle.inputImageHeight,
-                            resultBundle.inputImageWidth,
-                            com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM
-                        )
                         
                     } else {
                         overlay.clearLivePose()

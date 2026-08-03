@@ -7,8 +7,8 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import com.google.mediapipe.examples.poselandmarker.renderer.HuaweiPoseRenderer
+import com.google.mediapipe.examples.poselandmarker.renderer.Limb
 import com.google.mediapipe.tasks.vision.core.RunningMode
-import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import kotlin.math.max
 import kotlin.math.min
 
@@ -24,7 +24,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     View(context, attrs) {
 
     // ── Pose detection results ──
-    private var results: PoseLandmarkerResult? = null
+    private var targetResults: List<android.graphics.PointF>? = null
+    private var incorrectLimbs: Set<Limb> = emptySet()
     private var scaleFactor: Float = 1f
     private var postTranslateX: Float = 0f
     private var postTranslateY: Float = 0f
@@ -44,7 +45,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
      * Called when switching modes or stopping the camera.
      */
     fun clear() {
-        results = null
+        targetResults = null
+        incorrectLimbs = emptySet()
         renderer.reset()
         invalidate()
     }
@@ -54,7 +56,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
      * Called when tracking is temporarily lost.
      */
     fun clearLivePose() {
-        results = null
+        targetResults = null
+        incorrectLimbs = emptySet()
         renderer.reset()
         invalidate()
     }
@@ -65,14 +68,13 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         // ══════════════════════════════════════════
         // RENDER THE HUAWEI AI POSE PREMIUM OUTLINE
         // ══════════════════════════════════════════
-        results?.let { poseLandmarkerResult ->
-            if (poseLandmarkerResult.landmarks().isNotEmpty()) {
-                val landmarks = poseLandmarkerResult.landmarks()[0]
-
+        targetResults?.let { targetPose ->
+            if (targetPose.isNotEmpty()) {
                 try {
                     renderer.render(
                         canvas = canvas,
-                        landmarks = landmarks,
+                        landmarks = targetPose,
+                        incorrectLimbs = incorrectLimbs,
                         imageWidth = imageWidth,
                         imageHeight = imageHeight,
                         scaleFactor = scaleFactor,
@@ -92,13 +94,15 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
      * Update results and coordinate mapping from the detection pipeline.
      * Called from CameraFragment.onResults() on the UI thread.
      */
-    fun setResults(
-        poseLandmarkerResults: PoseLandmarkerResult,
+    fun setCoachResults(
+        transformedTarget: List<android.graphics.PointF>?,
+        incorrect: Set<Limb>,
         imageHeight: Int,
         imageWidth: Int,
         runningMode: RunningMode
     ) {
-        this.results = poseLandmarkerResults
+        this.targetResults = transformedTarget
+        this.incorrectLimbs = incorrect
         this.imageHeight = imageHeight
         this.imageWidth = imageWidth
 

@@ -1,8 +1,19 @@
 package com.google.mediapipe.examples.poselandmarker.renderer
 
+import android.graphics.Path
 import android.graphics.PointF
 import kotlin.math.atan2
 import kotlin.math.hypot
+
+/**
+ * Holds the generated paths for rendering the body model.
+ * [mainPath] is the unified correct body.
+ * [incorrectPaths] are individual paths for limbs that deviate from the target pose.
+ */
+data class BodyRenderModel(
+    val mainPath: Path,
+    val incorrectPaths: List<Path>
+)
 
 /**
  * MediaPipe Pose Landmark indices.
