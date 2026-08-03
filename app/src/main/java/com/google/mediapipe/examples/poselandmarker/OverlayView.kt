@@ -9,6 +9,7 @@ import android.view.View
 import com.google.mediapipe.examples.poselandmarker.renderer.HuaweiPoseRenderer
 import com.google.mediapipe.examples.poselandmarker.renderer.Limb
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import kotlin.math.max
 import kotlin.math.min
 
@@ -125,6 +126,26 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         postTranslateY = (height - scaledHeight) / 2f
 
         invalidate()
+    }
+
+    /**
+     * Fallback for GalleryFragment: renders the raw user's body instead of the coach target.
+     */
+    fun setResults(
+        poseLandmarkerResults: PoseLandmarkerResult,
+        imageHeight: Int,
+        imageWidth: Int,
+        runningMode: RunningMode
+    ) {
+        if (poseLandmarkerResults.landmarks().isNotEmpty()) {
+            val liveLandmarks = poseLandmarkerResults.landmarks()[0]
+            val pointFList = liveLandmarks.map { lm ->
+                android.graphics.PointF(lm.x(), lm.y())
+            }
+            setCoachResults(pointFList, emptySet(), imageHeight, imageWidth, runningMode)
+        } else {
+            clearLivePose()
+        }
     }
 
     override fun onDetachedFromWindow() {
