@@ -199,6 +199,7 @@ class PoseLandmarkerHelper(
         }
 
         val mpImage = BitmapImageBuilder(finalBitmap).build()
+        latestBitmap = finalBitmap
         detectAsync(mpImage, frameTime)
     }
 
@@ -339,6 +340,9 @@ class PoseLandmarkerHelper(
         return null
     }
 
+    // Cache the latest bitmap to avoid extraction issues from MediaPipe's internal MPImage
+    private var latestBitmap: Bitmap? = null
+
     // Return the landmark result to this PoseLandmarkerHelper's caller
     private fun returnLivestreamResult(
         result: PoseLandmarkerResult,
@@ -347,12 +351,8 @@ class PoseLandmarkerHelper(
         val finishTimeMs = SystemClock.uptimeMillis()
         val inferenceTime = finishTimeMs - result.timestampMs()
 
-        // Extract the original colored image bitmap
-        val inputBitmap = try {
-            com.google.mediapipe.framework.image.BitmapExtractor.extract(input)
-        } catch (e: Exception) {
-            null
-        }
+        // Use the safely cached original bitmap
+        val inputBitmap = latestBitmap
 
         poseLandmarkerHelperListener?.onResults(
             ResultBundle(

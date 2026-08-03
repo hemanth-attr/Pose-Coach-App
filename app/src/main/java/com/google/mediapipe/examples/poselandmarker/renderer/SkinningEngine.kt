@@ -116,12 +116,12 @@ class SkinningEngine(
             val tgt1 = targetLandmarks[bone.first]
             val tgt2 = targetLandmarks[bone.second]
             
-            // Convert to pixel space
+            // Convert to pixel space (source is normalized, target is ALREADY in pixels)
             val s1x = src1.x * viewWidth; val s1y = src1.y * viewHeight
             val s2x = src2.x * viewWidth; val s2y = src2.y * viewHeight
             
-            val t1x = tgt1.x * viewWidth; val t1y = tgt1.y * viewHeight
-            val t2x = tgt2.x * viewWidth; val t2y = tgt2.y * viewHeight
+            val t1x = tgt1.x; val t1y = tgt1.y
+            val t2x = tgt2.x; val t2y = tgt2.y
             
             // Source angle and length
             val srcAngle = atan2(s2y - s1y, s2x - s1x)
