@@ -194,6 +194,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                     textCountdown?.visibility = View.GONE
                     isCaptureRequested = true
                     btnCapture.isEnabled = true
+                    Toast.makeText(requireContext(), "📸 Capture flag set! Waiting for next frame...", Toast.LENGTH_SHORT).show()
                 }
             }.start()
         }
@@ -512,7 +513,14 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                         
                         if (isCaptureRequested) {
                             isCaptureRequested = false
-                            captureCustomPose(firstResult, resultBundle.inputImageWidth, resultBundle.inputImageHeight, resultBundle.inputBitmap)
+                            android.util.Log.d("PoseCapture", ">>> CAPTURE TRIGGERED! landmarks count=${firstResult.landmarks().size}")
+                            Toast.makeText(requireContext(), "Capturing now...", Toast.LENGTH_SHORT).show()
+                            try {
+                                captureCustomPose(firstResult, resultBundle.inputImageWidth, resultBundle.inputImageHeight, resultBundle.inputBitmap)
+                            } catch (e: Exception) {
+                                android.util.Log.e("PoseCapture", "captureCustomPose CRASHED", e)
+                                Toast.makeText(requireContext(), "Capture crashed: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
                         }
 
                         if (firstResult.landmarks().isNotEmpty() && currentTargetPose != null) {
