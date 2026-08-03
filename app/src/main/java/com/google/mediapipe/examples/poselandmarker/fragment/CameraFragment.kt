@@ -24,6 +24,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.Toast
+import android.os.CountDownTimer
+import android.widget.TextView
 import androidx.camera.core.Preview
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -35,6 +37,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.Navigation
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.mediapipe.examples.poselandmarker.PoseLandmarkerHelper
 import com.google.mediapipe.examples.poselandmarker.MainViewModel
 import com.google.mediapipe.examples.poselandmarker.R
@@ -169,6 +172,30 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             setupPoseCarousel()
 
             Toast.makeText(requireContext(), "Loaded ${poseDatabase.size} Poses! Select one below.", Toast.LENGTH_LONG).show()
+        }
+
+        setupCapturePoseButton()
+    }
+
+    private fun setupCapturePoseButton() {
+        val btnCapture = fragmentCameraBinding.root.findViewById<FloatingActionButton>(R.id.btn_capture_pose)
+        val textCountdown = fragmentCameraBinding.root.findViewById<TextView>(R.id.text_countdown)
+
+        btnCapture?.setOnClickListener {
+            btnCapture.isEnabled = false
+            textCountdown?.visibility = View.VISIBLE
+            
+            object : CountDownTimer(3000, 1000) {
+                override fun onTick(millisUntilFinished: Long) {
+                    textCountdown?.text = ((millisUntilFinished / 1000) + 1).toString()
+                }
+
+                override fun onFinish() {
+                    textCountdown?.visibility = View.GONE
+                    isCaptureRequested = true
+                    btnCapture.isEnabled = true
+                }
+            }.start()
         }
     }
     
@@ -425,6 +452,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     
     private var poseDatabase: Map<String, List<android.graphics.PointF>> = emptyMap()
     private var currentTargetPoseName: String = ""
+
+    private var isCaptureRequested = false
     private var currentTargetPose: List<android.graphics.PointF>? = null
 
     // Reads your poses.json file from the assets folder
@@ -544,6 +573,47 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         activity?.runOnUiThread {
             Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun captureCustomPose(result: com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult, imageWidth: Int, imageHeight: Int) {
+        val landmarks = result.landmarks()
+        if (landmarks.isEmpty()) {
+            Toast.makeText(requireContext(), "No person detected to capture!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // The point list we usually use for target poses
+        val posePoints = landmarks[0].map { android.graphics.PointF(it.x(), it.y()) }
+        
+        // Generate a new unique name
+        val newPoseName = "Custom Pose ${poseDatabase.size + 1}"
+        
+        // Convert map to mutable map if it's not already
+        val mutableDb = poseDatabase.toMutableMap()
+        mutableDb[newPoseName] = posePoints
+        poseDatabase = mutableDb
+
+        // Update current pose and UI
+        currentTargetPoseName = newPoseName
+        currentTargetPose = posePoints
+        
+        // Inform user
+        Toast.makeText(requireContext(), "Captured $newPoseName from your body!", Toast.LENGTH_LONG).show()
+        
+        // Reload carousel
+        setupPoseCarousel()
+        
+        // Extract the vector contour from segmentation mask!
+        val contourExtractor = com.google.mediapipe.examples.poselandmarker.renderer.SilhouetteContourExtractor()
+        val customVectorPath = com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractContour(
+            result,
+            imageWidth,
+            imageHeight,
+            _fragmentCameraBinding?.overlay?.width ?: 1080,
+            _fragmentCameraBinding?.overlay?.height ?: 1920,
+            contourExtractor
+        )
+        // Note: For now we aren't saving customVectorPath to OverlayView, but we can if we want to override the procedural generator!
     }
 
     private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {

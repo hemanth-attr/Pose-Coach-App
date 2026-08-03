@@ -37,9 +37,35 @@
         android:layout_height="80dp"
         app:layout_anchor="@id/bottom_sheet_layout"
         app:layout_anchorGravity="top"
+        android:layout_gravity="bottom"
         android:paddingHorizontal="16dp"
         android:clipToPadding="false"
         android:background="#33000000" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/btn_capture_pose"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="24dp"
+        app:layout_anchor="@id/pose_carousel"
+        app:layout_anchorGravity="top|end"
+        android:src="@android:drawable/ic_menu_camera"
+        app:tint="@android:color/white"
+        app:backgroundTint="#FF4081"
+        android:contentDescription="Capture Pose" />
+
+    <TextView
+        android:id="@+id/text_countdown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textSize="120sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/white"
+        android:shadowColor="#000000"
+        android:shadowRadius="10"
+        android:visibility="gone" />
 
     <include
         android:id="@+id/bottom_sheet_layout"

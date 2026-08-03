@@ -25,13 +25,10 @@ object TargetPoseTransformer {
     ): List<PointF> {
         if (targetPose.isEmpty() || viewWidth == 0 || viewHeight == 0) return targetPose
 
-        // 1. Recover Isotropic Space
-        // Assume the JSON poses were captured from a standard portrait camera (3:4 aspect ratio).
-        // If we don't multiply X by 0.75, the pose will look too wide when uniformly scaled.
-        val originalAspectRatio = 3f / 4f
-        val isotropicPoints = targetPose.map { pt ->
-            PointF(pt.x * originalAspectRatio, pt.y)
-        }
+        // 1. Isotropic Space
+        // The target pose points from JSON are already in an isotropic space (proportional 1:1).
+        // We do NOT need to artificially multiply X by the camera's aspect ratio, as this will squash it.
+        val isotropicPoints = targetPose
 
         // 2. Find the structural center of the body (Torso Center)
         // This creates a much more premium and stable framing than a simple bounding box,

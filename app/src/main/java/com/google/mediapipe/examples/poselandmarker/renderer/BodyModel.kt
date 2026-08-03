@@ -66,19 +66,19 @@ object AnatomyRatios {
     const val HEAD_RADIUS_FALLBACK = 0.48f       // Fallback head radius when side-profile
     const val HEAD_MIN_RATIO = 0.35f             // Minimum head radius relative to base
 
-    const val NECK_WIDTH = 0.22f                 // Neck capsule width
+    const val NECK_WIDTH = 0.35f                 // Neck capsule width
     const val NECK_LENGTH_RATIO = 0.3f           // How far down the neck extends from head center
 
-    const val TORSO_WIDTH = 0.52f                // Main torso capsule width
+    const val TORSO_WIDTH = 0.70f                // Main torso capsule width
     const val TORSO_FILL_INSET = 0.15f           // Inset for the torso fill quad
 
-    const val UPPER_ARM_WIDTH = 0.20f            // Shoulder → Elbow width
-    const val FOREARM_WIDTH = 0.16f              // Elbow → Wrist width
-    const val HAND_RADIUS = 0.10f                // Hand circle radius
+    const val UPPER_ARM_WIDTH = 0.32f            // Shoulder → Elbow width
+    const val FOREARM_WIDTH = 0.24f              // Elbow → Wrist width
+    const val HAND_RADIUS = 0.15f                // Hand circle radius
 
-    const val THIGH_WIDTH = 0.24f                // Hip → Knee width
-    const val CALF_WIDTH = 0.18f                 // Knee → Ankle width
-    const val FOOT_WIDTH = 0.14f                 // Foot capsule width
+    const val THIGH_WIDTH = 0.38f                // Hip → Knee width
+    const val CALF_WIDTH = 0.28f                 // Knee → Ankle width
+    const val FOOT_WIDTH = 0.20f                 // Foot capsule width
 
     // ── Minimum shoulder width to prevent degenerate geometry ──
     const val MIN_SHOULDER_WIDTH_PX = 40f

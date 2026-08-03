@@ -75,18 +75,28 @@ class SilhouetteContourExtractor {
         offscreenCanvas.drawPath(bodyPath, fillPaint)
         offscreenCanvas.restore()
 
+        return extractFromBitmap(offscreenBitmap, viewWidth, viewHeight)
+    }
+
+    /**
+     * Extracts a contour from an arbitrary Bitmap mask (e.g. from MediaPipe segmentation).
+     */
+    fun extractFromBitmap(sourceBitmap: Bitmap, viewWidth: Int, viewHeight: Int): List<PointF> {
+        val srcWidth = sourceBitmap.width
+        val srcHeight = sourceBitmap.height
+
         // ── Step 2: Convert bitmap to OpenCV Mat ──
-        val pixels = IntArray(RASTER_WIDTH * RASTER_HEIGHT)
-        offscreenBitmap.getPixels(pixels, 0, RASTER_WIDTH, 0, 0, RASTER_WIDTH, RASTER_HEIGHT)
+        val pixels = IntArray(srcWidth * srcHeight)
+        sourceBitmap.getPixels(pixels, 0, srcWidth, 0, 0, srcWidth, srcHeight)
 
         // Convert ARGB pixels to grayscale byte array
-        val grayBytes = ByteArray(RASTER_WIDTH * RASTER_HEIGHT)
+        val grayBytes = ByteArray(srcWidth * srcHeight)
         for (i in pixels.indices) {
-            // Extract red channel (since we drew white on black, R=G=B)
+            // Extract red channel (since we assume white on black, R=G=B)
             grayBytes[i] = ((pixels[i] shr 16) and 0xFF).toByte()
         }
 
-        val grayMat = Mat(RASTER_HEIGHT, RASTER_WIDTH, CvType.CV_8UC1)
+        val grayMat = Mat(srcHeight, srcWidth, CvType.CV_8UC1)
         grayMat.put(0, 0, grayBytes)
 
         // ── Step 3: Threshold to binary ──
@@ -131,8 +141,8 @@ class SilhouetteContourExtractor {
             Imgproc.approxPolyDP(contour2f, approxCurve, epsilon, true)
 
             // ── Step 8: Map coordinates back to view space ──
-            val invScaleX = viewWidth.toFloat() / RASTER_WIDTH.toFloat()
-            val invScaleY = viewHeight.toFloat() / RASTER_HEIGHT.toFloat()
+            val invScaleX = viewWidth.toFloat() / srcWidth.toFloat()
+            val invScaleY = viewHeight.toFloat() / srcHeight.toFloat()
 
             for (point in approxCurve.toArray()) {
                 result.add(PointF(
