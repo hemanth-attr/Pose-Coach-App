@@ -510,8 +510,10 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                     if (results.isNotEmpty()) {
                         val firstResult = results.first()
                         
-                        // We no longer extract the segmentation mask as the user wants procedural generation
-                        // firstResult.segmentationMasks() is ignored.
+                        if (isCaptureRequested) {
+                            isCaptureRequested = false
+                            captureCustomPose(firstResult, resultBundle.inputImageWidth, resultBundle.inputImageHeight, resultBundle.inputBitmap)
+                        }
 
                         if (firstResult.landmarks().isNotEmpty() && currentTargetPose != null) {
                             val liveLandmarks = firstResult.landmarks()[0]
