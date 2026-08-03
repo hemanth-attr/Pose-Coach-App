@@ -204,6 +204,19 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         val adapter = PoseCarouselAdapter(poseNames) { selectedPoseName ->
             currentTargetPoseName = selectedPoseName
             currentTargetPose = poseDatabase[selectedPoseName]
+            
+            // Apply custom silhouette if it exists, otherwise clear it
+            if (customSilhouetteDatabase.containsKey(selectedPoseName)) {
+                _fragmentCameraBinding?.overlay?.setCustomSilhouette(customSilhouetteDatabase[selectedPoseName])
+            } else {
+                _fragmentCameraBinding?.overlay?.setCustomSilhouette(null)
+            }
+            
+            // Apply Skinning Engine if we captured a user body
+            if (userSkinningEngine != null) {
+                _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
+            }
+            
             // Clear current live pose so the new template shows immediately
             _fragmentCameraBinding?.overlay?.clearLivePose() 
             _fragmentCameraBinding?.overlay?.invalidate()
@@ -451,6 +464,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     // ---------------------------------------------------------
     
     private var poseDatabase: Map<String, List<android.graphics.PointF>> = emptyMap()
+    private val customSilhouetteDatabase = mutableMapOf<String, android.graphics.Path>()
+    private var userSkinningEngine: com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine? = null
     private var currentTargetPoseName: String = ""
 
     private var isCaptureRequested = false
@@ -515,8 +530,10 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             )
                             
                             // 3. Send results to overlay
+                            val livePoints = liveLandmarks.map { android.graphics.PointF(it.x(), it.y()) }
                             overlay.setCoachResults(
                                 staticTemplatePixels,
+                                livePoints,
                                 incorrectLimbs,
                                 resultBundle.inputImageHeight,
                                 resultBundle.inputImageWidth,
@@ -532,6 +549,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             )
                             overlay.setCoachResults(
                                 staticTemplatePixels,
+                                null, // No live landmarks
                                 emptySet(),
                                 resultBundle.inputImageHeight,
                                 resultBundle.inputImageWidth,
@@ -575,7 +593,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         }
     }
 
-    private fun captureCustomPose(result: com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult, imageWidth: Int, imageHeight: Int) {
+    private fun captureCustomPose(result: com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult, imageWidth: Int, imageHeight: Int, inputBitmap: android.graphics.Bitmap?) {
         val landmarks = result.landmarks()
         if (landmarks.isEmpty()) {
             Toast.makeText(requireContext(), "No person detected to capture!", Toast.LENGTH_SHORT).show()
@@ -603,17 +621,27 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         // Reload carousel
         setupPoseCarousel()
         
-        // Extract the vector contour from segmentation mask!
-        val contourExtractor = com.google.mediapipe.examples.poselandmarker.renderer.SilhouetteContourExtractor()
-        val customVectorPath = com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractContour(
+        // Extract the masked image!
+        val maskedBitmap = com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractMaskedBitmap(
             result,
-            imageWidth,
-            imageHeight,
-            _fragmentCameraBinding?.overlay?.width ?: 1080,
-            _fragmentCameraBinding?.overlay?.height ?: 1920,
-            contourExtractor
+            inputBitmap
         )
-        // Note: For now we aren't saving customVectorPath to OverlayView, but we can if we want to override the procedural generator!
+        
+        if (maskedBitmap != null) {
+            val viewWidth = _fragmentCameraBinding?.overlay?.width ?: 1080
+            val viewHeight = _fragmentCameraBinding?.overlay?.height ?: 1920
+            
+            // Build the Skinning Engine for Real-Time Deformation!
+            userSkinningEngine = com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine(
+                maskedBitmap,
+                posePoints,
+                viewWidth,
+                viewHeight
+            )
+            
+            // Automatically select and show it!
+            _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
+        }
     }
 
     private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {

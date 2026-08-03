@@ -347,12 +347,20 @@ class PoseLandmarkerHelper(
         val finishTimeMs = SystemClock.uptimeMillis()
         val inferenceTime = finishTimeMs - result.timestampMs()
 
+        // Extract the original colored image bitmap
+        val inputBitmap = try {
+            com.google.mediapipe.framework.image.BitmapExtractor.extract(input)
+        } catch (e: Exception) {
+            null
+        }
+
         poseLandmarkerHelperListener?.onResults(
             ResultBundle(
                 listOf(result),
                 inferenceTime,
                 input.height,
-                input.width
+                input.width,
+                inputBitmap
             )
         )
     }
@@ -386,6 +394,7 @@ class PoseLandmarkerHelper(
         val inferenceTime: Long,
         val inputImageHeight: Int,
         val inputImageWidth: Int,
+        val inputBitmap: Bitmap? = null
     )
 
     interface LandmarkerListener {

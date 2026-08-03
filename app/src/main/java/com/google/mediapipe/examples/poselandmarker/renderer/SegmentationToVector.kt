@@ -55,4 +55,54 @@ object SegmentationToVector {
         // Let's add extractFromBitmap to SilhouetteContourExtractor
         return contourExtractor.extractFromBitmap(bitmap, viewWidth, viewHeight)
     }
+
+    /**
+     * Extracts a masked Bitmap containing only the person, removing the background.
+     */
+    fun extractMaskedBitmap(
+        result: PoseLandmarkerResult,
+        inputBitmap: Bitmap?
+    ): Bitmap? {
+        if (inputBitmap == null) return null
+        
+        val masks = result.segmentationMasks()
+        if (!masks.isPresent || masks.get().isEmpty()) {
+            return null
+        }
+
+        val maskImage = masks.get()[0]
+        val maskWidth = maskImage.width
+        val maskHeight = maskImage.height
+        
+        val floatBuffer = ByteBufferExtractor.extract(maskImage).asFloatBuffer()
+        floatBuffer.rewind()
+
+        // Scale original input bitmap to match the mask size (or vice versa).
+        // The mask is usually the same size as input if no internal resizing happened, 
+        // but just in case, we scale inputBitmap.
+        val scaledInput = if (inputBitmap.width != maskWidth || inputBitmap.height != maskHeight) {
+            Bitmap.createScaledBitmap(inputBitmap, maskWidth, maskHeight, true)
+        } else {
+            inputBitmap
+        }
+        
+        val outputBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888)
+        val inPixels = IntArray(maskWidth * maskHeight)
+        val outPixels = IntArray(maskWidth * maskHeight)
+        
+        scaledInput.getPixels(inPixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
+
+        // Apply alpha mask
+        for (i in 0 until (maskWidth * maskHeight)) {
+            val confidence = floatBuffer.get()
+            if (confidence > 0.5f) {
+                outPixels[i] = inPixels[i]
+            } else {
+                outPixels[i] = Color.TRANSPARENT
+            }
+        }
+        
+        outputBitmap.setPixels(outPixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
+        return outputBitmap
+    }
 }
