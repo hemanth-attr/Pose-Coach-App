@@ -569,6 +569,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                         )
                         overlay.setCoachResults(
                             staticTemplatePixels,
+                            null, // liveLandmarks
                             emptySet(),
                             resultBundle.inputImageHeight,
                             resultBundle.inputImageWidth,
