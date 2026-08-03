@@ -74,35 +74,40 @@ object SegmentationToVector {
         val maskWidth = maskImage.width
         val maskHeight = maskImage.height
         
-        val floatBuffer = ByteBufferExtractor.extract(maskImage).asFloatBuffer()
-        floatBuffer.rewind()
+        try {
+            val floatBuffer = ByteBufferExtractor.extract(maskImage).asFloatBuffer()
+            floatBuffer.rewind()
 
-        // Scale original input bitmap to match the mask size (or vice versa).
-        // The mask is usually the same size as input if no internal resizing happened, 
-        // but just in case, we scale inputBitmap.
-        val scaledInput = if (inputBitmap.width != maskWidth || inputBitmap.height != maskHeight) {
-            Bitmap.createScaledBitmap(inputBitmap, maskWidth, maskHeight, true)
-        } else {
-            inputBitmap
-        }
-        
-        val outputBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888)
-        val inPixels = IntArray(maskWidth * maskHeight)
-        val outPixels = IntArray(maskWidth * maskHeight)
-        
-        scaledInput.getPixels(inPixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
-
-        // Apply alpha mask
-        for (i in 0 until (maskWidth * maskHeight)) {
-            val confidence = floatBuffer.get()
-            if (confidence > 0.5f) {
-                outPixels[i] = inPixels[i]
+            // Scale original input bitmap to match the mask size (or vice versa).
+            val scaledInput = if (inputBitmap.width != maskWidth || inputBitmap.height != maskHeight) {
+                Bitmap.createScaledBitmap(inputBitmap, maskWidth, maskHeight, true)
             } else {
-                outPixels[i] = Color.TRANSPARENT
+                inputBitmap
             }
+            
+            val outputBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888)
+            val inPixels = IntArray(maskWidth * maskHeight)
+            val outPixels = IntArray(maskWidth * maskHeight)
+            
+            scaledInput.getPixels(inPixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
+
+            // Apply alpha mask
+            for (i in 0 until (maskWidth * maskHeight)) {
+                val confidence = floatBuffer.get()
+                if (confidence > 0.5f) {
+                    outPixels[i] = inPixels[i]
+                } else {
+                    outPixels[i] = Color.TRANSPARENT
+                }
+            }
+            
+            outputBitmap.setPixels(outPixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
+            return outputBitmap
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Bulletproof Fallback: If AI segmentation fails (e.g. due to hardware buffer issues),
+            // just return the original photo so the puppeteering still works!
+            return inputBitmap
         }
-        
-        outputBitmap.setPixels(outPixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
-        return outputBitmap
     }
 }

@@ -622,26 +622,50 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         // Reload carousel
         setupPoseCarousel()
         
+        // Foolproof Fallback: If MediaPipe failed to pass the original frame, just grab what's currently on the screen!
+        val safeInputBitmap = inputBitmap ?: _fragmentCameraBinding?.viewFinder?.bitmap
+        
+        if (safeInputBitmap == null) {
+            activity?.runOnUiThread {
+                Toast.makeText(requireContext(), "Error: Camera frame was null!", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
         // Extract the masked image!
-        val maskedBitmap = com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractMaskedBitmap(
-            result,
-            inputBitmap
-        )
+        val maskedBitmap = try {
+            com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractMaskedBitmap(
+                result,
+                safeInputBitmap
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            safeInputBitmap
+        }
         
         if (maskedBitmap != null) {
             val viewWidth = _fragmentCameraBinding?.overlay?.width ?: 1080
             val viewHeight = _fragmentCameraBinding?.overlay?.height ?: 1920
             
             // Build the Skinning Engine for Real-Time Deformation!
-            userSkinningEngine = com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine(
-                maskedBitmap,
-                posePoints,
-                viewWidth,
-                viewHeight
-            )
-            
-            // Automatically select and show it!
-            _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
+            try {
+                userSkinningEngine = com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine(
+                    maskedBitmap,
+                    posePoints,
+                    viewWidth,
+                    viewHeight
+                )
+                // Automatically select and show it!
+                _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
+            } catch (e: Exception) {
+                activity?.runOnUiThread {
+                    Toast.makeText(requireContext(), "Engine Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        } else {
+            activity?.runOnUiThread {
+                Toast.makeText(requireContext(), "Error: AI Segmentation Mask is missing! (Are you using the Full model?)", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
