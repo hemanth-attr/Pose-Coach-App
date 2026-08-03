@@ -3,7 +3,7 @@ package com.google.mediapipe.examples.poselandmarker.renderer
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PointF
-import com.google.mediapipe.tasks.vision.core.image.ImageExtractor
+import com.google.mediapipe.framework.image.ByteBufferExtractor
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import java.nio.FloatBuffer
 
@@ -30,7 +30,7 @@ object SegmentationToVector {
         val maskHeight = maskImage.height
         
         // Extract the raw float buffer from the MPImage (confidence values 0.0 to 1.0)
-        val floatBuffer: FloatBuffer = com.google.mediapipe.tasks.vision.core.image.FloatBufferExtractor.extract(maskImage)
+        val floatBuffer: FloatBuffer = ByteBufferExtractor.extract(maskImage).asFloatBuffer()
         floatBuffer.rewind()
 
         // Create a bitmap to hold the thresholded mask
