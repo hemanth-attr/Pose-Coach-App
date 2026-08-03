@@ -17,17 +17,22 @@ object TargetPoseTransformer {
      */
     fun transform(
         targetPose: List<PointF>,
-        liveLandmarks: List<NormalizedLandmark>
+        liveLandmarks: List<NormalizedLandmark>,
+        imageWidth: Int,
+        imageHeight: Int
     ): List<PointF> {
         if (targetPose.size < 33 || liveLandmarks.size < 33) return targetPose
+        if (imageWidth == 0 || imageHeight == 0) return targetPose
 
-        // 1. Calculate live torso center and length
+        val aspect = imageWidth.toFloat() / imageHeight.toFloat()
+
+        // 1. Calculate live torso center and length (isotropic space)
         val liveMidHip = PointF(
-            (liveLandmarks[23].x() + liveLandmarks[24].x()) / 2f,
+            ((liveLandmarks[23].x() + liveLandmarks[24].x()) / 2f) * aspect,
             (liveLandmarks[23].y() + liveLandmarks[24].y()) / 2f
         )
         val liveMidShoulder = PointF(
-            (liveLandmarks[11].x() + liveLandmarks[12].x()) / 2f,
+            ((liveLandmarks[11].x() + liveLandmarks[12].x()) / 2f) * aspect,
             (liveLandmarks[11].y() + liveLandmarks[12].y()) / 2f
         )
         val liveTorsoLength = Geometry.distance(liveMidHip, liveMidShoulder)
@@ -37,6 +42,8 @@ object TargetPoseTransformer {
         )
 
         // 2. Calculate target torso center and length
+        // targetPose was saved using naive (x, y) distance, so we must assume it is already isotropic 
+        // relative to the camera that saved it. However, to rotate it cleanly, we just use its raw coordinates.
         val targetMidHip = PointF(
             (targetPose[23].x + targetPose[24].x) / 2f,
             (targetPose[23].y + targetPose[24].y) / 2f
@@ -70,11 +77,12 @@ object TargetPoseTransformer {
             val rx = dx * cosA - dy * sinA
             val ry = dx * sinA + dy * cosA
 
-            // Scale and translate to live hip
-            val finalX = liveMidHip.x + rx * scale
+            // Scale and translate to live hip (isotropic)
+            val finalX_iso = liveMidHip.x + rx * scale
             val finalY = liveMidHip.y + ry * scale
             
-            transformedPose.add(PointF(finalX, finalY))
+            // Convert back to normalized coordinates
+            transformedPose.add(PointF(finalX_iso / aspect, finalY))
         }
 
         return transformedPose

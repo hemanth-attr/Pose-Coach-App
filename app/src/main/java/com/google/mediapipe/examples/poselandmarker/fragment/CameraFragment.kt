@@ -454,7 +454,9 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             // 1. Transform Target Pose to fit the live user
                             val transformedTarget = com.google.mediapipe.examples.poselandmarker.renderer.TargetPoseTransformer.transform(
                                 currentTargetPose!!,
-                                liveLandmarks
+                                liveLandmarks,
+                                resultBundle.inputImageWidth,
+                                resultBundle.inputImageHeight
                             )
                             
                             // 2. Analyze angles to find incorrect limbs
