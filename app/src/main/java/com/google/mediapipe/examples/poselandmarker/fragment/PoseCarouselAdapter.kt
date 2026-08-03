@@ -22,7 +22,7 @@ class PoseCarouselAdapter(
 
         init {
             view.setOnClickListener {
-                val position = bindingAdapterPosition
+                val position = adapterPosition
                 if (position != RecyclerView.NO_POSITION && position != selectedPosition) {
                     val previous = selectedPosition
                     selectedPosition = position
