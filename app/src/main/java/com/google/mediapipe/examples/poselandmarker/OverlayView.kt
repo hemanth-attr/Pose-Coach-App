@@ -63,6 +63,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         invalidate()
     }
 
+    private var isPixelCoordinates: Boolean = false
+
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
@@ -82,7 +84,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                         postTranslateX = postTranslateX,
                         postTranslateY = postTranslateY,
                         viewWidth = width,
-                        viewHeight = height
+                        viewHeight = height,
+                        isPixelCoordinates = isPixelCoordinates
                     )
                 } catch (e: Exception) {
                     // Failsafe — never crash the UI thread
@@ -100,12 +103,14 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         incorrect: Set<Limb>,
         imageHeight: Int,
         imageWidth: Int,
-        runningMode: RunningMode
+        runningMode: RunningMode,
+        isPixelCoordinates: Boolean = false
     ) {
         this.targetResults = transformedTarget
         this.incorrectLimbs = incorrect
         this.imageHeight = imageHeight
         this.imageWidth = imageWidth
+        this.isPixelCoordinates = isPixelCoordinates
 
         // Calculate CENTER_CROP scaling
         scaleFactor = when (runningMode) {

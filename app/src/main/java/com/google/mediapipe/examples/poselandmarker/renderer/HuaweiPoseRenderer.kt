@@ -89,7 +89,8 @@ class HuaweiPoseRenderer {
         postTranslateX: Float,
         postTranslateY: Float,
         viewWidth: Int,
-        viewHeight: Int
+        viewHeight: Int,
+        isPixelCoordinates: Boolean = false
     ) {
         if (landmarks.size < 33) return
         if (viewWidth <= 0 || viewHeight <= 0) return
@@ -101,10 +102,14 @@ class HuaweiPoseRenderer {
         // ══════════════════════════════════════════
         val rawPoints = Array(landmarks.size.coerceAtMost(33)) { i ->
             val lm = landmarks[i]
-            PointF(
-                lm.x * imageWidth * scaleFactor + postTranslateX,
-                lm.y * imageHeight * scaleFactor + postTranslateY
-            )
+            if (isPixelCoordinates) {
+                PointF(lm.x, lm.y)
+            } else {
+                PointF(
+                    lm.x * imageWidth * scaleFactor + postTranslateX,
+                    lm.y * imageHeight * scaleFactor + postTranslateY
+                )
+            }
         }
 
         // ══════════════════════════════════════════

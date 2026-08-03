@@ -31,6 +31,16 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/pose_carousel"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        app:layout_anchor="@id/bottom_sheet_layout"
+        app:layout_anchorGravity="top"
+        android:paddingHorizontal="16dp"
+        android:clipToPadding="false"
+        android:background="#33000000" />
+
     <include
         android:id="@+id/bottom_sheet_layout"
         layout="@layout/info_bottom_sheet" />

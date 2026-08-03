@@ -166,8 +166,29 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             currentTargetPoseName = poseDatabase.keys.first()
             currentTargetPose = poseDatabase[currentTargetPoseName]
 
-            Toast.makeText(requireContext(), "Loaded 44 Poses! Try: $currentTargetPoseName", Toast.LENGTH_LONG).show()
+            setupPoseCarousel()
+
+            Toast.makeText(requireContext(), "Loaded ${poseDatabase.size} Poses! Select one below.", Toast.LENGTH_LONG).show()
         }
+    }
+    
+    private fun setupPoseCarousel() {
+        val poseNames = poseDatabase.keys.toList()
+        val adapter = PoseCarouselAdapter(poseNames) { selectedPoseName ->
+            currentTargetPoseName = selectedPoseName
+            currentTargetPose = poseDatabase[selectedPoseName]
+            // Clear current live pose so the new template shows immediately
+            _fragmentCameraBinding?.overlay?.clearLivePose() 
+            _fragmentCameraBinding?.overlay?.invalidate()
+        }
+        
+        val poseCarousel = fragmentCameraBinding.root.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.pose_carousel)
+        poseCarousel?.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(
+            requireContext(),
+            androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL,
+            false
+        )
+        poseCarousel?.adapter = adapter
     }
 
     private fun initBottomSheetControls() {
@@ -451,32 +472,62 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                         if (firstResult.landmarks().isNotEmpty() && currentTargetPose != null) {
                             val liveLandmarks = firstResult.landmarks()[0]
                             
-                            // 1. Transform Target Pose to fit the live user
-                            val transformedTarget = com.google.mediapipe.examples.poselandmarker.renderer.TargetPoseTransformer.transform(
+                            // 1. Transform Target Pose to a perfectly centered, uniformly scaled static template
+                            val staticTemplatePixels = com.google.mediapipe.examples.poselandmarker.renderer.TargetPoseTransformer.transformToStaticTemplate(
                                 currentTargetPose!!,
-                                liveLandmarks,
-                                resultBundle.inputImageWidth,
-                                resultBundle.inputImageHeight
+                                overlay.width,
+                                overlay.height
                             )
                             
-                            // 2. Analyze angles to find incorrect limbs
+                            // 2. Analyze angles to find incorrect limbs (compare using normalized coordinates)
                             val incorrectLimbs = com.google.mediapipe.examples.poselandmarker.renderer.PoseAngleAnalyzer.analyze(
                                 liveLandmarks,
-                                transformedTarget
+                                currentTargetPose!!
                             )
                             
                             // 3. Send results to overlay
                             overlay.setCoachResults(
-                                transformedTarget,
+                                staticTemplatePixels,
                                 incorrectLimbs,
                                 resultBundle.inputImageHeight,
                                 resultBundle.inputImageWidth,
-                                com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM
+                                com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM,
+                                true // isPixelCoordinates
+                            )
+                        } else if (currentTargetPose != null) {
+                            // Draw template even if no user is detected so they can step into it
+                            val staticTemplatePixels = com.google.mediapipe.examples.poselandmarker.renderer.TargetPoseTransformer.transformToStaticTemplate(
+                                currentTargetPose!!,
+                                overlay.width,
+                                overlay.height
+                            )
+                            overlay.setCoachResults(
+                                staticTemplatePixels,
+                                emptySet(),
+                                resultBundle.inputImageHeight,
+                                resultBundle.inputImageWidth,
+                                com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM,
+                                true // isPixelCoordinates
                             )
                         } else {
                             overlay.clearLivePose()
                         }
                         
+                    } else if (currentTargetPose != null) {
+                        // Draw template even if results are completely empty
+                        val staticTemplatePixels = com.google.mediapipe.examples.poselandmarker.renderer.TargetPoseTransformer.transformToStaticTemplate(
+                            currentTargetPose!!,
+                            overlay.width,
+                            overlay.height
+                        )
+                        overlay.setCoachResults(
+                            staticTemplatePixels,
+                            emptySet(),
+                            resultBundle.inputImageHeight,
+                            resultBundle.inputImageWidth,
+                            com.google.mediapipe.tasks.vision.core.RunningMode.LIVE_STREAM,
+                            true // isPixelCoordinates
+                        )
                     } else {
                         overlay.clearLivePose()
                     }
