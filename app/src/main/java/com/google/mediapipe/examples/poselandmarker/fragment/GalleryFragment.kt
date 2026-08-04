@@ -93,7 +93,29 @@ class GalleryFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             getContent.launch(arrayOf("image/*", "video/*"))
         }
 
+        bottomSheetBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
         initBottomSheetControls()
+    }
+
+    private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {
+        val hipCenterX = (landmarks[23].x() + landmarks[24].x()) / 2f
+        val hipCenterY = (landmarks[23].y() + landmarks[24].y()) / 2f
+        val shoulderCenterX = (landmarks[11].x() + landmarks[12].x()) / 2f
+        val shoulderCenterY = (landmarks[11].y() + landmarks[12].y()) / 2f
+
+        val torsoScale = Math.sqrt(
+            Math.pow((shoulderCenterX - hipCenterX).toDouble(), 2.0) +
+            Math.pow((shoulderCenterY - hipCenterY).toDouble(), 2.0)
+        ).toFloat()
+
+        val safeScale = if (torsoScale < 0.001f) 1f else torsoScale
+
+        return landmarks.map { lm ->
+            android.graphics.PointF(
+                (lm.x() - hipCenterX) / safeScale,
+                (lm.y() - hipCenterY) / safeScale
+            )
+        }
     }
 
     override fun onPause() {
@@ -290,6 +312,14 @@ class GalleryFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                                 bitmap.width,
                                 RunningMode.IMAGE
                             )
+                            
+                            // Steal the pose!
+                            if (result.results[0].landmarks().isNotEmpty()) {
+                                val stolenPose = normalizeLandmarks(result.results[0].landmarks()[0])
+                                val poseName = "Gallery Pose ${com.google.mediapipe.examples.poselandmarker.fragment.SharedPoseRepository.stolenPoses.size + 1}"
+                                com.google.mediapipe.examples.poselandmarker.fragment.SharedPoseRepository.stolenPoses[poseName] = stolenPose
+                                Toast.makeText(requireContext(), "Stolen '$poseName'! Switch to Camera to use it.", Toast.LENGTH_LONG).show()
+                            }
 
                             setUiEnabled(true)
                             fragmentGalleryBinding.bottomSheetLayout.inferenceTimeVal.text =

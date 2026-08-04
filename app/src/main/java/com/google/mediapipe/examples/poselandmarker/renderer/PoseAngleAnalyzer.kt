@@ -24,17 +24,23 @@ object PoseAngleAnalyzer {
      */
     fun analyze(
         liveLandmarks: List<NormalizedLandmark>,
-        transformedTarget: List<PointF>
+        transformedTarget: List<PointF>,
+        imageWidth: Int,
+        imageHeight: Int
     ): Set<Limb> {
         val incorrectLimbs = mutableSetOf<Limb>()
         
-        if (liveLandmarks.size < 33 || transformedTarget.size < 33) return incorrectLimbs
+        if (liveLandmarks.size < 33 || transformedTarget.size < 33 || imageHeight == 0) return incorrectLimbs
 
-        // Helper to get angle of a segment in the live pose
+        val aspect = imageWidth.toFloat() / imageHeight.toFloat()
+
+        // Helper to get angle of a segment in the live pose (converting to isotropic space)
         fun getLiveAngle(p1: Int, p2: Int): Float {
+            val p1x = liveLandmarks[p1].x() * aspect
+            val p2x = liveLandmarks[p2].x() * aspect
             return atan2(
                 liveLandmarks[p2].y() - liveLandmarks[p1].y(),
-                liveLandmarks[p2].x() - liveLandmarks[p1].x()
+                p2x - p1x
             )
         }
 

@@ -48,6 +48,10 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
+
+object SharedPoseRepository {
+    val stolenPoses = mutableMapOf<String, List<android.graphics.PointF>>()
+}
 import org.opencv.android.OpenCVLoader
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
@@ -496,6 +500,10 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        
+        // Merge with stolen poses from Gallery
+        poseMap.putAll(SharedPoseRepository.stolenPoses)
+        
         return poseMap
     }
 
@@ -536,7 +544,9 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             // 2. Analyze angles to find incorrect limbs (compare using normalized coordinates)
                             val incorrectLimbs = com.google.mediapipe.examples.poselandmarker.renderer.PoseAngleAnalyzer.analyze(
                                 liveLandmarks,
-                                currentTargetPose!!
+                                currentTargetPose!!,
+                                imageWidth,
+                                imageHeight
                             )
                             
                             // 3. Send results to overlay
@@ -614,17 +624,20 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         // The point list we usually use for target poses
         val posePoints = landmarks[0].map { android.graphics.PointF(it.x(), it.y()) }
         
+        // Normalize the landmarks so they perfectly match the poses.json isotropic hip-centered format!
+        val normalizedPose = normalizeLandmarks(landmarks[0])
+        
         // Generate a new unique name
         val newPoseName = "Custom Pose ${poseDatabase.size + 1}"
         
         // Convert map to mutable map if it's not already
         val mutableDb = poseDatabase.toMutableMap()
-        mutableDb[newPoseName] = posePoints
+        mutableDb[newPoseName] = normalizedPose
         poseDatabase = mutableDb
 
         // Update current pose and UI
         currentTargetPoseName = newPoseName
-        currentTargetPose = posePoints
+        currentTargetPose = normalizedPose
         
         // Inform user
         Toast.makeText(requireContext(), "Captured $newPoseName from your body!", Toast.LENGTH_LONG).show()
