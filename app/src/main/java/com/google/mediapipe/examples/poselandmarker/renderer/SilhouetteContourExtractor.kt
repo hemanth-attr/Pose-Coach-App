@@ -75,7 +75,7 @@ class SilhouetteContourExtractor {
         offscreenCanvas.drawPath(bodyPath, fillPaint)
         offscreenCanvas.restore()
 
-        return extractFromBitmap(offscreenBitmap, viewWidth, viewHeight)
+        return extractFromBitmap(offscreenBitmap, viewWidth, viewHeight, viewWidth, viewHeight)
     }
 
     /**
