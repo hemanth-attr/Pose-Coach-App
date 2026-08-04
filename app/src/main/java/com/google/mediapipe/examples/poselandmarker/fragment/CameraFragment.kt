@@ -466,7 +466,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     
     private var poseDatabase: Map<String, List<android.graphics.PointF>> = emptyMap()
     private val customSilhouetteDatabase = mutableMapOf<String, android.graphics.Path>()
-    private var userSkinningEngine: com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine? = null
+    private var userSkinningEngine: com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine? = null
     private var currentTargetPoseName: String = ""
 
     private var isCaptureRequested = false
@@ -657,19 +657,35 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             val viewWidth = _fragmentCameraBinding?.overlay?.width ?: 1080
             val viewHeight = _fragmentCameraBinding?.overlay?.height ?: 1920
             
-            // Build the Skinning Engine for Real-Time Deformation!
-            try {
-                userSkinningEngine = com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine(
-                    maskedBitmap,
-                    posePoints,
-                    viewWidth,
-                    viewHeight
-                )
-                // Automatically select and show it!
-                _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
-            } catch (e: Exception) {
+            // Extract the high-fidelity 2D vector outline from the mask
+            val contourPoints = com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractContour(
+                result,
+                imageWidth,
+                imageHeight,
+                viewWidth,
+                viewHeight,
+                com.google.mediapipe.examples.poselandmarker.renderer.SilhouetteContourExtractor()
+            )
+
+            if (contourPoints.isNotEmpty()) {
+                // Build the Vector Skinning Engine for Real-Time Deformation!
+                try {
+                    userSkinningEngine = com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine(
+                        contourPoints,
+                        posePoints,
+                        viewWidth,
+                        viewHeight
+                    )
+                    // Automatically select and show it!
+                    _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
+                } catch (e: Exception) {
+                    activity?.runOnUiThread {
+                        Toast.makeText(requireContext(), "Engine Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } else {
                 activity?.runOnUiThread {
-                    Toast.makeText(requireContext(), "Engine Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), "Error: Failed to extract vector outline from mask!", Toast.LENGTH_LONG).show()
                 }
             }
         } else {

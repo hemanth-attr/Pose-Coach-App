@@ -44,7 +44,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
 
     // ── Custom Pose Silhouette ──
     private var customVectorPath: android.graphics.Path? = null
-    private var skinningEngine: com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine? = null
+    private var skinningEngine: com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine? = null
 
     /**
      * Clear all results and reset the renderer's temporal state.
@@ -138,16 +138,33 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         }
 
         // ══════════════════════════════════════════
-        // 2D SKELETAL ANIMATION (PUPPET WARPING)
+        // 2D VECTOR ANIMATION (VECTOR SKINNING)
         // ══════════════════════════════════════════
         if (skinningEngine != null && targetResults != null) {
             try {
-                skinningEngine!!.deform(targetResults!!)
-                val paint = Paint().apply {
+                // 1. Deform the 2D contour points using skeletal tracking
+                val deformedPoints = skinningEngine!!.deform(targetResults!!)
+                
+                // 2. Smooth the deformed points using SplineSmoother (Chaikin + Catmull-Rom)
+                val smoothOutline = com.google.mediapipe.examples.poselandmarker.renderer.SplineSmoother.smooth(
+                    points = deformedPoints,
+                    chaikinIterations = 3,
+                    tension = 0.25f
+                )
+                
+                // 3. Draw with premium Huawei AI Pose aesthetic
+                val outlinePaint = Paint().apply {
+                    style = Paint.Style.STROKE
+                    strokeJoin = Paint.Join.ROUND
+                    strokeCap = Paint.Cap.ROUND
                     isAntiAlias = true
-                    isFilterBitmap = true
+                    color = Color.WHITE
+                    strokeWidth = 5f
+                    // Subtle dark shadow for visibility on bright backgrounds
+                    setShadowLayer(3f, 0f, 0f, Color.argb(120, 0, 0, 0))
                 }
-                skinningEngine!!.draw(canvas, paint)
+                
+                canvas.drawPath(smoothOutline, outlinePaint)
             } catch (e: Exception) {
                 // Failsafe
             }
@@ -248,9 +265,9 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     }
 
     /**
-     * Set the skinning engine for 2D skeletal deformation.
+     * Set the skinning engine for 2D vector deformation.
      */
-    fun setSkinningEngine(engine: com.google.mediapipe.examples.poselandmarker.renderer.SkinningEngine?) {
+    fun setSkinningEngine(engine: com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine?) {
         this.skinningEngine = engine
         invalidate()
     }
