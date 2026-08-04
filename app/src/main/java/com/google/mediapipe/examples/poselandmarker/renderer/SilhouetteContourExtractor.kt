@@ -81,7 +81,7 @@ class SilhouetteContourExtractor {
     /**
      * Extracts a contour from an arbitrary Bitmap mask (e.g. from MediaPipe segmentation).
      */
-    fun extractFromBitmap(sourceBitmap: Bitmap, viewWidth: Int, viewHeight: Int): List<PointF> {
+    fun extractFromBitmap(sourceBitmap: Bitmap, viewWidth: Int, viewHeight: Int, imageWidth: Int, imageHeight: Int): List<PointF> {
         val srcWidth = sourceBitmap.width
         val srcHeight = sourceBitmap.height
 
@@ -140,15 +140,19 @@ class SilhouetteContourExtractor {
             val epsilon = SIMPLIFICATION_EPSILON * Imgproc.arcLength(contour2f, true)
             Imgproc.approxPolyDP(contour2f, approxCurve, epsilon, true)
 
-            // ── Step 8: Map coordinates back to view space ──
-            val invScaleX = viewWidth.toFloat() / srcWidth.toFloat()
-            val invScaleY = viewHeight.toFloat() / srcHeight.toFloat()
+            // ── Step 8: Map coordinates back to view space using CENTER_CROP ──
+            val scaleFactor = Math.max(viewWidth * 1f / imageWidth, viewHeight * 1f / imageHeight)
+            val postTranslateX = (viewWidth - imageWidth * scaleFactor) / 2f
+            val postTranslateY = (viewHeight - imageHeight * scaleFactor) / 2f
 
             for (point in approxCurve.toArray()) {
-                result.add(PointF(
-                    point.x.toFloat() * invScaleX,
-                    point.y.toFloat() * invScaleY
-                ))
+                val normX = point.x.toFloat() / srcWidth.toFloat()
+                val normY = point.y.toFloat() / srcHeight.toFloat()
+                
+                val viewX = (normX * imageWidth) * scaleFactor + postTranslateX
+                val viewY = (normY * imageHeight) * scaleFactor + postTranslateY
+                
+                result.add(PointF(viewX, viewY))
             }
 
             contour2f.release()

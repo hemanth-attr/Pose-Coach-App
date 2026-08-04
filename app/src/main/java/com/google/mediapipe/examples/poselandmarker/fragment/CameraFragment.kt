@@ -674,7 +674,9 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                         contourPoints,
                         posePoints,
                         viewWidth,
-                        viewHeight
+                        viewHeight,
+                        imageWidth,
+                        imageHeight
                     )
                     // Automatically select and show it!
                     _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)

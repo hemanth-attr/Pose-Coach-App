@@ -53,7 +53,7 @@ object SegmentationToVector {
         // OR we can add a new method to SilhouetteContourExtractor that takes a Bitmap directly!
         
         // Let's add extractFromBitmap to SilhouetteContourExtractor
-        return contourExtractor.extractFromBitmap(bitmap, viewWidth, viewHeight)
+        return contourExtractor.extractFromBitmap(bitmap, viewWidth, viewHeight, inputWidth, inputHeight)
     }
 
     /**

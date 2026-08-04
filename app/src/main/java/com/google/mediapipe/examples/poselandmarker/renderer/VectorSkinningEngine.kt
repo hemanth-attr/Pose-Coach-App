@@ -14,7 +14,9 @@ class VectorSkinningEngine(
     private val restPoints: List<PointF>,
     private val sourceLandmarks: List<PointF>,
     private val viewWidth: Int,
-    private val viewHeight: Int
+    private val viewHeight: Int,
+    private val imageWidth: Int,
+    private val imageHeight: Int
 ) {
     private val numVertices = restPoints.size
     
@@ -37,6 +39,17 @@ class VectorSkinningEngine(
     // vertexWeights[v][b] = weight of bone b on vertex v
     private val vertexWeights = Array(numVertices) { FloatArray(bones.size) }
 
+    private val scaleFactor = Math.max(viewWidth * 1f / imageWidth, viewHeight * 1f / imageHeight)
+    private val postTranslateX = (viewWidth - imageWidth * scaleFactor) / 2f
+    private val postTranslateY = (viewHeight - imageHeight * scaleFactor) / 2f
+
+    private fun normalizedToView(normPt: PointF): PointF {
+        return PointF(
+            (normPt.x * imageWidth) * scaleFactor + postTranslateX,
+            (normPt.y * imageHeight) * scaleFactor + postTranslateY
+        )
+    }
+
     init {
         calculateBoneWeights()
     }
@@ -52,14 +65,13 @@ class VectorSkinningEngine(
             
             for (b in bones.indices) {
                 val bone = bones[b]
-                val p1 = sourceLandmarks[bone.first]
-                val p2 = sourceLandmarks[bone.second]
+                val p1 = normalizedToView(sourceLandmarks[bone.first])
+                val p2 = normalizedToView(sourceLandmarks[bone.second])
                 
-                // Convert normalized landmarks to pixel space for distance calculation
-                val p1x = p1.x * viewWidth
-                val p1y = p1.y * viewHeight
-                val p2x = p2.x * viewWidth
-                val p2y = p2.y * viewHeight
+                val p1x = p1.x
+                val p1y = p1.y
+                val p2x = p2.x
+                val p2y = p2.y
                 
                 val dist = distanceToSegment(vx, vy, p1x, p1y, p2x, p2y)
                 
@@ -89,14 +101,14 @@ class VectorSkinningEngine(
         
         for (b in bones.indices) {
             val bone = bones[b]
-            val src1 = sourceLandmarks[bone.first]
-            val src2 = sourceLandmarks[bone.second]
+            val src1 = normalizedToView(sourceLandmarks[bone.first])
+            val src2 = normalizedToView(sourceLandmarks[bone.second])
             val tgt1 = targetLandmarks[bone.first]
             val tgt2 = targetLandmarks[bone.second]
             
             // Convert to pixel space (source is normalized, target is ALREADY in pixels)
-            val s1x = src1.x * viewWidth; val s1y = src1.y * viewHeight
-            val s2x = src2.x * viewWidth; val s2y = src2.y * viewHeight
+            val s1x = src1.x; val s1y = src1.y
+            val s2x = src2.x; val s2y = src2.y
             
             val t1x = tgt1.x; val t1y = tgt1.y
             val t2x = tgt2.x; val t2y = tgt2.y
