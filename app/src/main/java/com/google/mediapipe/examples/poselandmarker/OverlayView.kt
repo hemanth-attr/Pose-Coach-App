@@ -232,12 +232,9 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         }
     }
 
-    /**
-     * Set a custom captured human silhouette path.
-     */
+    // Keep this empty so CameraFragment doesn't throw compiler errors!
     fun setCustomSilhouette(path: android.graphics.Path?) {
-        this.customVectorPath = path
-        invalidate()
+        // Custom 2D paths are obsolete. We use 3D Skeletal Retargeting now.
     }
 
     override fun onDetachedFromWindow() {
