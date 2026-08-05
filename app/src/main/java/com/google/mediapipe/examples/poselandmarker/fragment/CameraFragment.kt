@@ -49,10 +49,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 
+import org.opencv.android.OpenCVLoader
+
 object SharedPoseRepository {
     val stolenPoses = mutableMapOf<String, List<android.graphics.PointF>>()
 }
-import org.opencv.android.OpenCVLoader
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     companion object {
@@ -545,8 +546,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             val incorrectLimbs = com.google.mediapipe.examples.poselandmarker.renderer.PoseAngleAnalyzer.analyze(
                                 liveLandmarks,
                                 currentTargetPose!!,
-                                imageWidth,
-                                imageHeight
+                                resultBundle.inputImageWidth,
+                                resultBundle.inputImageHeight
                             )
                             
                             // 3. Send results to overlay

@@ -92,9 +92,6 @@ class GalleryFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         fragmentGalleryBinding.fabGetContent.setOnClickListener {
             getContent.launch(arrayOf("image/*", "video/*"))
         }
-
-        bottomSheetBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
-        initBottomSheetControls()
     }
 
     private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {
