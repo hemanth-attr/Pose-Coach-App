@@ -44,7 +44,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
 
     // ── Custom Pose Silhouette ──
     private var customVectorPath: android.graphics.Path? = null
-    private var skinningEngine: com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine? = null
 
     /**
      * Clear all results and reset the renderer's temporal state.
@@ -55,7 +54,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         liveResults = null
         incorrectLimbs = emptySet()
         customVectorPath = null
-        skinningEngine = null
         renderer.reset()
         invalidate()
     }
@@ -67,7 +65,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     fun clearLivePose() {
         liveResults = null
         incorrectLimbs = emptySet()
-        // We DO NOT clear targetResults, customVectorPath, or skinningEngine here, so the template stays on screen!
+        // We DO NOT clear targetResults or customVectorPath here, so the template stays on screen!
         renderer.reset()
         invalidate()
     }
@@ -138,38 +136,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
         }
 
         // ══════════════════════════════════════════
-        // 2D VECTOR ANIMATION (VECTOR SKINNING)
+        // 2D PROCEDURAL ANIMATION (HUAWEI AI POSE)
         // ══════════════════════════════════════════
-        if (skinningEngine != null && targetResults != null) {
-            try {
-                // 1. Deform the 2D contour points using skeletal tracking
-                val deformedPoints = skinningEngine!!.deform(targetResults!!)
-                
-                // 2. Smooth the deformed points using SplineSmoother (Chaikin + Catmull-Rom)
-                val smoothOutline = com.google.mediapipe.examples.poselandmarker.renderer.SplineSmoother.smooth(
-                    points = deformedPoints,
-                    chaikinIterations = 3,
-                    tension = 0.25f
-                )
-                
-                // 3. Draw with premium Huawei AI Pose aesthetic
-                val outlinePaint = Paint().apply {
-                    style = Paint.Style.STROKE
-                    strokeJoin = Paint.Join.ROUND
-                    strokeCap = Paint.Cap.ROUND
-                    isAntiAlias = true
-                    color = Color.WHITE
-                    strokeWidth = 5f
-                    // Subtle dark shadow for visibility on bright backgrounds
-                    setShadowLayer(3f, 0f, 0f, Color.argb(120, 0, 0, 0))
-                }
-                
-                canvas.drawPath(smoothOutline, outlinePaint)
-            } catch (e: Exception) {
-                // Failsafe
-            }
-            return
-        }
 
         // Otherwise, fall back to procedural geometry
         targetResults?.let { targetPose ->
@@ -261,14 +229,6 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
      */
     fun setCustomSilhouette(path: android.graphics.Path?) {
         this.customVectorPath = path
-        invalidate()
-    }
-
-    /**
-     * Set the skinning engine for 2D vector deformation.
-     */
-    fun setSkinningEngine(engine: com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine?) {
-        this.skinningEngine = engine
         invalidate()
     }
 

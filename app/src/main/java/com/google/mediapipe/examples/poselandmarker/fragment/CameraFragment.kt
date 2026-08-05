@@ -470,8 +470,6 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     // ---------------------------------------------------------
     
     private var poseDatabase: Map<String, List<android.graphics.PointF>> = emptyMap()
-    private val customSilhouetteDatabase = mutableMapOf<String, android.graphics.Path>()
-    private var userSkinningEngine: com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine? = null
     private var currentTargetPoseName: String = ""
 
     private var isCaptureRequested = false
@@ -525,7 +523,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             android.util.Log.d("PoseCapture", ">>> CAPTURE TRIGGERED! landmarks count=${firstResult.landmarks().size}")
                             Toast.makeText(requireContext(), "Capturing now...", Toast.LENGTH_SHORT).show()
                             try {
-                                captureCustomPose(firstResult, resultBundle.inputImageWidth, resultBundle.inputImageHeight, resultBundle.inputBitmap)
+                                captureCustomPose(firstResult, resultBundle.inputImageWidth, resultBundle.inputImageHeight)
                             } catch (e: Exception) {
                                 android.util.Log.e("PoseCapture", "captureCustomPose CRASHED", e)
                                 Toast.makeText(requireContext(), "Capture crashed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -615,15 +613,12 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         }
     }
 
-    private fun captureCustomPose(result: com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult, imageWidth: Int, imageHeight: Int, inputBitmap: android.graphics.Bitmap?) {
+    private fun captureCustomPose(result: com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult, imageWidth: Int, imageHeight: Int) {
         val landmarks = result.landmarks()
         if (landmarks.isEmpty()) {
             Toast.makeText(requireContext(), "No person detected to capture!", Toast.LENGTH_SHORT).show()
             return
         }
-
-        // The point list we usually use for target poses
-        val posePoints = landmarks[0].map { android.graphics.PointF(it.x(), it.y()) }
         
         // Normalize the landmarks so they perfectly match the poses.json isotropic hip-centered format!
         val normalizedPose = normalizeLandmarks(landmarks[0], imageWidth, imageHeight)
@@ -645,70 +640,6 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         
         // Reload carousel
         setupPoseCarousel()
-        
-        // Foolproof Fallback: If MediaPipe failed to pass the original frame, just grab what's currently on the screen!
-        val safeInputBitmap = inputBitmap ?: _fragmentCameraBinding?.viewFinder?.bitmap
-        
-        if (safeInputBitmap == null) {
-            activity?.runOnUiThread {
-                Toast.makeText(requireContext(), "Error: Camera frame was null!", Toast.LENGTH_LONG).show()
-            }
-            return
-        }
-
-        // Extract the masked image!
-        val maskedBitmap = try {
-            com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractMaskedBitmap(
-                result,
-                safeInputBitmap
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-            safeInputBitmap
-        }
-        
-        if (maskedBitmap != null) {
-            val viewWidth = _fragmentCameraBinding?.overlay?.width ?: 1080
-            val viewHeight = _fragmentCameraBinding?.overlay?.height ?: 1920
-            
-            // Extract the high-fidelity 2D vector outline from the mask
-            val contourPoints = com.google.mediapipe.examples.poselandmarker.renderer.SegmentationToVector.extractContour(
-                result,
-                imageWidth,
-                imageHeight,
-                viewWidth,
-                viewHeight,
-                com.google.mediapipe.examples.poselandmarker.renderer.SilhouetteContourExtractor()
-            )
-
-            if (contourPoints.isNotEmpty()) {
-                // Build the Vector Skinning Engine for Real-Time Deformation!
-                try {
-                    userSkinningEngine = com.google.mediapipe.examples.poselandmarker.renderer.VectorSkinningEngine(
-                        contourPoints,
-                        posePoints,
-                        viewWidth,
-                        viewHeight,
-                        imageWidth,
-                        imageHeight
-                    )
-                    // Automatically select and show it!
-                    _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
-                } catch (e: Exception) {
-                    activity?.runOnUiThread {
-                        Toast.makeText(requireContext(), "Engine Error: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            } else {
-                activity?.runOnUiThread {
-                    Toast.makeText(requireContext(), "Error: Failed to extract vector outline from mask!", Toast.LENGTH_LONG).show()
-                }
-            }
-        } else {
-            activity?.runOnUiThread {
-                Toast.makeText(requireContext(), "Error: AI Segmentation Mask is missing! (Are you using the Full model?)", Toast.LENGTH_LONG).show()
-            }
-        }
     }
 
     private fun normalizeLandmarks(
