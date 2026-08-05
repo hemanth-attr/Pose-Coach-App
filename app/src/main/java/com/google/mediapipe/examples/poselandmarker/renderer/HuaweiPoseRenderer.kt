@@ -8,12 +8,6 @@ import android.graphics.PointF
 import kotlin.math.hypot
 import kotlin.math.max
 
-enum class Limb {
-    LEFT_ARM, RIGHT_ARM, LEFT_FOREARM, RIGHT_FOREARM,
-    LEFT_THIGH, RIGHT_THIGH, LEFT_CALF, RIGHT_CALF,
-    TORSO
-}
-
 class HuaweiPoseRenderer {
 
     // Semi-transparent base fill for the silhouette body

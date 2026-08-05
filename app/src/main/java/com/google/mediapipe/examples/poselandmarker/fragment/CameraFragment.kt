@@ -211,18 +211,6 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             currentTargetPoseName = selectedPoseName
             currentTargetPose = poseDatabase[selectedPoseName]
             
-            // Apply custom silhouette if it exists, otherwise clear it
-            if (customSilhouetteDatabase.containsKey(selectedPoseName)) {
-                _fragmentCameraBinding?.overlay?.setCustomSilhouette(customSilhouetteDatabase[selectedPoseName])
-            } else {
-                _fragmentCameraBinding?.overlay?.setCustomSilhouette(null)
-            }
-            
-            // Apply Skinning Engine if we captured a user body
-            if (userSkinningEngine != null) {
-                _fragmentCameraBinding?.overlay?.setSkinningEngine(userSkinningEngine)
-            }
-            
             // Clear current live pose so the new template shows immediately
             _fragmentCameraBinding?.overlay?.clearLivePose() 
             _fragmentCameraBinding?.overlay?.invalidate()
