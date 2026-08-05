@@ -58,6 +58,7 @@ class HuaweiPoseRenderer {
         if (landmarks.size < 29) return
 
         // 1. Convert ALL normalized landmarks to View Pixel Coordinates FIRST
+        // FIX: Explicitly cast imageWidth and imageHeight to Float to prevent casting errors
         val screenPoints = landmarks.map { lm ->
             if (isPixelCoordinates) {
                 PointF(
@@ -66,8 +67,8 @@ class HuaweiPoseRenderer {
                 )
             } else {
                 PointF(
-                    lm.x * imageWidth * scaleFactor + postTranslateX,
-                    lm.y * imageHeight * scaleFactor + postTranslateY
+                    lm.x * imageWidth.toFloat() * scaleFactor + postTranslateX,
+                    lm.y * imageHeight.toFloat() * scaleFactor + postTranslateY
                 )
             }
         }
@@ -88,10 +89,8 @@ class HuaweiPoseRenderer {
         val ankleR = screenPoints[28]
 
         // 2. Compute dynamic thickness with an enforced MINIMUM floor (120px)
-        val shoulderWidth = hypot(
-            (shoulderR.x - shoulderL.x).toDouble(),
-            (shoulderR.y - shoulderL.y).toDouble()
-        ).toFloat()
+        // FIX: Removed unnecessary .toDouble().toFloat() casting
+        val shoulderWidth = hypot(shoulderR.x - shoulderL.x, shoulderR.y - shoulderL.y)
 
         val minThickness = 120f // Guarantee minimum thickness in pixels
         val limbThickness = max(shoulderWidth * 0.38f, minThickness)
@@ -167,7 +166,9 @@ class HuaweiPoseRenderer {
 
         val dx = p2.x - p1.x
         val dy = p2.y - p1.y
-        val len = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+        
+        // FIX: Cleaned up hypot casting here as well
+        val len = hypot(dx, dy)
 
         if (len > 0.001f) {
             // Calculate perpendicular normal vector scaled by radius
