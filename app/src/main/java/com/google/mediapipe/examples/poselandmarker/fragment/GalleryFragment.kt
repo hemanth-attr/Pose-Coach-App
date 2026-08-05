@@ -94,10 +94,17 @@ class GalleryFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         }
     }
 
-    private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {
-        val hipCenterX = (landmarks[23].x() + landmarks[24].x()) / 2f
+    private fun normalizeLandmarks(
+        landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>,
+        imageWidth: Int,
+        imageHeight: Int
+    ): List<android.graphics.PointF> {
+        if (imageHeight == 0) return landmarks.map { android.graphics.PointF(it.x(), it.y()) }
+        val aspect = imageWidth.toFloat() / imageHeight.toFloat()
+
+        val hipCenterX = ((landmarks[23].x() + landmarks[24].x()) / 2f) * aspect
         val hipCenterY = (landmarks[23].y() + landmarks[24].y()) / 2f
-        val shoulderCenterX = (landmarks[11].x() + landmarks[12].x()) / 2f
+        val shoulderCenterX = ((landmarks[11].x() + landmarks[12].x()) / 2f) * aspect
         val shoulderCenterY = (landmarks[11].y() + landmarks[12].y()) / 2f
 
         val torsoScale = Math.sqrt(
@@ -109,7 +116,7 @@ class GalleryFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         return landmarks.map { lm ->
             android.graphics.PointF(
-                (lm.x() - hipCenterX) / safeScale,
+                ((lm.x() * aspect) - hipCenterX) / safeScale,
                 (lm.y() - hipCenterY) / safeScale
             )
         }
@@ -312,7 +319,7 @@ class GalleryFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                             
                             // Steal the pose!
                             if (result.results[0].landmarks().isNotEmpty()) {
-                                val stolenPose = normalizeLandmarks(result.results[0].landmarks()[0])
+                                val stolenPose = normalizeLandmarks(result.results[0].landmarks()[0], bitmap.width, bitmap.height)
                                 val poseName = "Gallery Pose ${com.google.mediapipe.examples.poselandmarker.fragment.SharedPoseRepository.stolenPoses.size + 1}"
                                 com.google.mediapipe.examples.poselandmarker.fragment.SharedPoseRepository.stolenPoses[poseName] = stolenPose
                                 Toast.makeText(requireContext(), "Stolen '$poseName'! Switch to Camera to use it.", Toast.LENGTH_LONG).show()

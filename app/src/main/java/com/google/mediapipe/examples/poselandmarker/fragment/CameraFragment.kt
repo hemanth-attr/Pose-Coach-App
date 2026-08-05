@@ -626,7 +626,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         val posePoints = landmarks[0].map { android.graphics.PointF(it.x(), it.y()) }
         
         // Normalize the landmarks so they perfectly match the poses.json isotropic hip-centered format!
-        val normalizedPose = normalizeLandmarks(landmarks[0])
+        val normalizedPose = normalizeLandmarks(landmarks[0], imageWidth, imageHeight)
         
         // Generate a new unique name
         val newPoseName = "Custom Pose ${poseDatabase.size + 1}"
@@ -711,10 +711,17 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         }
     }
 
-    private fun normalizeLandmarks(landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): List<android.graphics.PointF> {
-        val hipCenterX = (landmarks[23].x() + landmarks[24].x()) / 2f
+    private fun normalizeLandmarks(
+        landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>,
+        imageWidth: Int,
+        imageHeight: Int
+    ): List<android.graphics.PointF> {
+        if (imageHeight == 0) return landmarks.map { android.graphics.PointF(it.x(), it.y()) }
+        val aspect = imageWidth.toFloat() / imageHeight.toFloat()
+
+        val hipCenterX = ((landmarks[23].x() + landmarks[24].x()) / 2f) * aspect
         val hipCenterY = (landmarks[23].y() + landmarks[24].y()) / 2f
-        val shoulderCenterX = (landmarks[11].x() + landmarks[12].x()) / 2f
+        val shoulderCenterX = ((landmarks[11].x() + landmarks[12].x()) / 2f) * aspect
         val shoulderCenterY = (landmarks[11].y() + landmarks[12].y()) / 2f
 
         val torsoScale = Math.sqrt(
@@ -726,7 +733,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         return landmarks.map { lm ->
             android.graphics.PointF(
-                (lm.x() - hipCenterX) / safeScale,
+                ((lm.x() * aspect) - hipCenterX) / safeScale,
                 (lm.y() - hipCenterY) / safeScale
             )
         }
